@@ -2,7 +2,13 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Verified via GitHub Actions (PR #2, run 31915309706): 159/159 tests
+passing on Python 3.10, 3.11, and 3.12; ruff check/format, mypy, and
+package build all green on real CI infrastructure, not local checks
+alone. See `evaluation/step6-evaluation.md` for the full verification
+ladder.
 
 ## Context
 
