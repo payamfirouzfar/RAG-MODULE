@@ -28,7 +28,7 @@ def event_bus() -> EventBus:
 
 
 def _forward_accepts_context(cls: type[Module]) -> bool:
-    """Does ``cls.forward`` declare a ``context`` parameter?
+    """Does ``cls.forward`` declare a ``context`` parameter.
 
     Cached per class so reflection cost is paid once per Module subclass.
     """
@@ -97,13 +97,38 @@ class Module:
             yield from child.named_modules(child_prefix)
 
     def __call__(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
-        event_kwargs = {
-            "run_id": context.run_id if context is not None else None,
-            "parent_run_id": context.parent_run_id if context is not None else None,
-        }
-        _bus.publish(Event(EventType.MODULE_STARTED, self._name, **event_kwargs))
+        if context is None:
+            _bus.publish(Event(EventType.MODULE_STARTED, self._name))
+            try:
+                result = self.forward(input)
+            except Exception as exc:
+                _bus.publish(
+                    Event(
+                        EventType.MODULE_FAILED,
+                        self._name,
+                        payload={"error": str(exc)},
+                    )
+                )
+                if isinstance(exc, RegistryError):
+                    raise
+                raise ExecutionError(
+                    f"Module '{self._name}' raised {type(exc).__name__}: {exc}"
+                ) from exc
+            _bus.publish(Event(EventType.MODULE_FINISHED, self._name))
+            return result
+
+        run_id = context.run_id
+        parent_run_id = context.parent_run_id
+        _bus.publish(
+            Event(
+                EventType.MODULE_STARTED,
+                self._name,
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+            )
+        )
         try:
-            if context is not None and _forward_accepts_context(type(self)):
+            if _forward_accepts_context(type(self)):
                 result = self.forward(input, context=context)
             else:
                 result = self.forward(input)
@@ -113,7 +138,8 @@ class Module:
                     EventType.MODULE_FAILED,
                     self._name,
                     payload={"error": str(exc)},
-                    **event_kwargs,
+                    run_id=run_id,
+                    parent_run_id=parent_run_id,
                 )
             )
             if isinstance(exc, RegistryError):
@@ -121,7 +147,14 @@ class Module:
             raise ExecutionError(
                 f"Module '{self._name}' raised {type(exc).__name__}: {exc}"
             ) from exc
-        _bus.publish(Event(EventType.MODULE_FINISHED, self._name, **event_kwargs))
+        _bus.publish(
+            Event(
+                EventType.MODULE_FINISHED,
+                self._name,
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+            )
+        )
         return result
 
     def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
