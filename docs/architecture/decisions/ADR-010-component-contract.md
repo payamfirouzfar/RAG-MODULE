@@ -245,7 +245,7 @@ typing actually works, not just that `Module` happens to satisfy it:
 ## Benchmark strategy
 
 Per ADR-009, the Step 6 benchmark lives at
-`benchmarks/step6_component_overhead.py`. It measures the existing hot
+`benchmarks/step6_component_contract.py`. It measures the existing hot
 paths (`Module.__call__`, `Sequential`, `inspect()`) before/after this
 change to confirm the two new properties add no meaningful per-call cost
 (they are not on any hot path — see Decision), plus a separate,

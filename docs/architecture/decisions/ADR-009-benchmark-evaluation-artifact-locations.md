@@ -59,7 +59,7 @@ through `step4-evaluation.md`, and `evaluation/step2_benchmark.py` through
 reclassifying and moving eight files is a separate, explicit migration
 that should be its own reviewed change if and when it happens, not a
 silent side effect of a Step 6 ADR. Step 6's own benchmark
-(`step6_component_overhead.py`) and its report (`step6-evaluation.md` or
+(`step6_component_contract.py`) and its report (`step6-evaluation.md` or
 equivalent) are the first artifacts placed under this rule going forward.
 
 ### Going forward
@@ -106,7 +106,7 @@ equivalent) are the first artifacts placed under this rule going forward.
 ## Consequences
 
 - Step 6's benchmark has an unambiguous home:
-  `benchmarks/step6_component_overhead.py`.
+  `benchmarks/step6_component_contract.py`.
 - `evaluation/` is reserved for its ADR-004 purpose going forward,
   without pretending the eight pre-existing files there are wrongly
   placed enough to justify a scope-creeping move right now.
