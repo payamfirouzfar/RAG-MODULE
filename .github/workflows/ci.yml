@@ -43,5 +43,14 @@ jobs:
           assert result.case_count == 2 and result.error_count == 0 and result.mean('exact_match') == 1.0, result.to_dict()
           "
 
+      - name: Step 5 performance benchmark
+        run: python benchmarks/step5_event_context_overhead.py | tee step5_event_context_overhead.txt
+
+      - name: Upload Step 5 benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-event-context-overhead-py${{ matrix.python-version }}
+          path: step5_event_context_overhead.txt
+
       - name: Build package
         run: pip install build && python -m build
