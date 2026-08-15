@@ -3,11 +3,14 @@
 Step 1 provided the core kernel — Module, RAGModule, Sequential,
 configuration, errors, and events. Step 2 added execution identity,
 observability (traces, metrics, structured logs), and evaluation
-primitives. Step 3 adds ExecutionEngine, which coordinates Run/Trace/
+primitives. Step 3 added ExecutionEngine, which coordinates Run/Trace/
 Metrics around a Module call as a guaranteed contract rather than a
-convention every caller must re-derive. No LLM, embedding, or
-vector-store integrations live here; those are built on top of this
-foundation in later steps.
+convention every caller must re-derive. Step 4 propagates
+ExecutionContext through nested Module execution (e.g. Sequential's
+children), so composite RAG systems get correctly-parented execution
+identity for each child without any global state. No LLM, embedding,
+or vector-store integrations live here; those are built on top of
+this foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -43,7 +46,7 @@ from ragtorch.core import (
     redact,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "__version__",

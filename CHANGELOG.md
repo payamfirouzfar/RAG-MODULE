@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - Step 4: Runtime Context Propagation + Module Execution Semantics
+
+### Added
+
+- `Module.__call__`/`forward` gain an optional keyword-only `context`
+  parameter. Whether a subclass's `forward()` receives it is detected once
+  per class (cached, via `inspect.signature`) rather than requiring every
+  subclass to opt in — existing `forward(self, input)` subclasses from
+  Steps 1-3 are unaffected.
+- `Sequential.forward` derives a distinct `context.child(step=...)` per
+  step when a context is given, so nested children get correctly-parented,
+  mutually-isolated execution identities instead of sharing one context or
+  receiving none.
+- `ExecutionEngine.execute()` now threads its `ExecutionContext` into the
+  top-level module call it runs, closing the gap Step 3's ADR-006
+  explicitly deferred ("context propagation to children is the
+  composite's responsibility, not the engine's").
+- ADR-007: nested module execution semantics — invariants (backward
+  compatibility, no global state, parent/child identity, explicit failure
+  propagation, bounded signature-detection cost) and explicit non-goals
+  (automatic nested trace spans/metrics, DAG scheduling, persistence —
+  deferred to later steps).
+- Step 4 performance baseline: context-propagation overhead per
+  `Sequential` step measured and a regression budget (< 50 µs p50) frozen
+  from real numbers.
+
+### Compatibility
+
+- All 125 Step 1-3 tests pass unmodified — no existing test file required
+  editing. `module(input)` with no context behaves identically to before.
+
 ## [0.3.0] - Step 3: Execution Engine + Module Lifecycle + Observability Contract
 
 ### Added
