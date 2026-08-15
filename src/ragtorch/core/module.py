@@ -178,9 +178,7 @@ class Module:
     def __repr__(self) -> str:
         if not self._modules:
             return f"{self._name}()"
-        child_reprs = "\n".join(
-            f"  ({name}): {child!r}" for name, child in self._modules.items()
-        )
+        child_reprs = "\n".join(f"  ({name}): {child!r}" for name, child in self._modules.items())
         return f"{self._name}(\n{child_reprs}\n)"
 
 

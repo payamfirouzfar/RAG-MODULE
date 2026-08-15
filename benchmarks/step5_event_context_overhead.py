@@ -65,10 +65,7 @@ def main() -> None:
     print(f"samples={samples}")
     print(f"without_context: p50={plain.p50_us:.3f}us p95={plain.p95_us:.3f}us")
     print(f"with_context:    p50={contextual.p50_us:.3f}us p95={contextual.p95_us:.3f}us")
-    print(
-        "context_overhead_p50_pct="
-        f"{((contextual.p50_us / plain.p50_us) - 1.0) * 100.0:.2f}%"
-    )
+    print(f"context_overhead_p50_pct={((contextual.p50_us / plain.p50_us) - 1.0) * 100.0:.2f}%")
 
 
 if __name__ == "__main__":
