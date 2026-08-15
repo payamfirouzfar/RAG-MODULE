@@ -2,6 +2,7 @@
 
 from ragtorch.core.config import RAGConfig
 from ragtorch.core.context import ExecutionContext, new_run_id
+from ragtorch.core.engine import ExecutionEngine, ExecutionResult, ObservabilityLevel
 from ragtorch.core.errors import (
     ConfigurationError,
     ExecutionError,
@@ -32,6 +33,9 @@ __all__ = [
     "new_span_id",
     "MetricsCollector",
     "MetricSummary",
+    "ExecutionEngine",
+    "ExecutionResult",
+    "ObservabilityLevel",
     "get_logger",
     "log_event",
     "redact",

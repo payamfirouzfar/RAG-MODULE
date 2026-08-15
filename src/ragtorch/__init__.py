@@ -1,10 +1,13 @@
 """ragtorch: a framework kernel for building modular RAG systems.
 
 Step 1 provided the core kernel — Module, RAGModule, Sequential,
-configuration, errors, and events. Step 2 adds execution identity,
+configuration, errors, and events. Step 2 added execution identity,
 observability (traces, metrics, structured logs), and evaluation
-primitives. No LLM, embedding, or vector-store integrations live
-here; those are built on top of this foundation in later steps.
+primitives. Step 3 adds ExecutionEngine, which coordinates Run/Trace/
+Metrics around a Module call as a guaranteed contract rather than a
+convention every caller must re-derive. No LLM, embedding, or
+vector-store integrations live here; those are built on top of this
+foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -13,11 +16,14 @@ from ragtorch.core import (
     EventBus,
     EventType,
     ExecutionContext,
+    ExecutionEngine,
     ExecutionError,
+    ExecutionResult,
     MetricsCollector,
     MetricSummary,
     Module,
     ModuleError,
+    ObservabilityLevel,
     RAGConfig,
     RAGModule,
     RAGTorchError,
@@ -37,7 +43,7 @@ from ragtorch.core import (
     redact,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "__version__",
@@ -54,6 +60,9 @@ __all__ = [
     "new_span_id",
     "MetricsCollector",
     "MetricSummary",
+    "ExecutionEngine",
+    "ExecutionResult",
+    "ObservabilityLevel",
     "get_logger",
     "log_event",
     "redact",
