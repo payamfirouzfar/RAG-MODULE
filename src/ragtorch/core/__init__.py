@@ -11,6 +11,7 @@ from ragtorch.core.errors import (
     ValidationError,
 )
 from ragtorch.core.events import Event, EventBus, EventType
+from ragtorch.core.logging import get_logger, is_sensitive_key, log_event, redact
 from ragtorch.core.metrics import MetricsCollector, MetricSummary
 from ragtorch.core.module import Module, RAGModule, event_bus
 from ragtorch.core.run import Run, RunStatus
@@ -31,6 +32,10 @@ __all__ = [
     "new_span_id",
     "MetricsCollector",
     "MetricSummary",
+    "get_logger",
+    "log_event",
+    "redact",
+    "is_sensitive_key",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",

@@ -29,8 +29,12 @@ from ragtorch.core import (
     Trace,
     ValidationError,
     event_bus,
+    get_logger,
+    is_sensitive_key,
+    log_event,
     new_run_id,
     new_span_id,
+    redact,
 )
 
 __version__ = "0.2.0"
@@ -50,6 +54,10 @@ __all__ = [
     "new_span_id",
     "MetricsCollector",
     "MetricSummary",
+    "get_logger",
+    "log_event",
+    "redact",
+    "is_sensitive_key",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",
