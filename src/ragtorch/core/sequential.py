@@ -8,9 +8,12 @@ nested inside another Sequential or any other composite.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ragtorch.core.module import Module
+
+if TYPE_CHECKING:
+    from ragtorch.core.context import ExecutionContext
 
 
 class Sequential(Module):
@@ -27,10 +30,13 @@ class Sequential(Module):
             self.register_module(name, step)
             self._steps.append(step)
 
-    def forward(self, input: Any) -> Any:
+    def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
         value = input
-        for step in self._steps:
-            value = step(value)
+        for i, step in enumerate(self._steps):
+            if context is not None:
+                value = step(value, context=context.child(step=f"step{i}"))
+            else:
+                value = step(value)
         return value
 
     def __len__(self) -> int:

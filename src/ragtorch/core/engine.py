@@ -88,7 +88,7 @@ class ExecutionEngine:
 
         with self._maybe_span(trace, module_name, context, enabled=debug):
             try:
-                output = module(input)
+                output = module(input, context=context)
             except Exception as exc:
                 run.fail(exc)
                 self._record_duration(metrics, module_name, run)

@@ -7,19 +7,41 @@ own named child modules, and can describe its own architecture.
 
 from __future__ import annotations
 
+import inspect
 from collections import OrderedDict
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ragtorch.core.errors import ExecutionError, RegistryError
 from ragtorch.core.events import Event, EventBus, EventType
 
+if TYPE_CHECKING:
+    from ragtorch.core.context import ExecutionContext
+
 _bus = EventBus()
+
+_forward_accepts_context_cache: dict[type, bool] = {}
 
 
 def event_bus() -> EventBus:
     """Return the process-wide event bus used by Module execution."""
     return _bus
+
+
+def _forward_accepts_context(cls: type[Module]) -> bool:
+    """Does ``cls.forward`` declare a ``context`` parameter?
+
+    Cached per class (not per instance) so this reflection cost — see
+    ADR-007 invariant I7 — is paid once per Module subclass, not once
+    per call.
+    """
+    cached = _forward_accepts_context_cache.get(cls)
+    if cached is not None:
+        return cached
+    signature = inspect.signature(cls.forward)
+    accepts = "context" in signature.parameters
+    _forward_accepts_context_cache[cls] = accepts
+    return accepts
 
 
 class Module:
@@ -95,10 +117,13 @@ class Module:
 
     # -- execution -----------------------------------------------------
 
-    def __call__(self, input: Any) -> Any:
+    def __call__(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
         _bus.publish(Event(EventType.MODULE_STARTED, self._name))
         try:
-            result = self.forward(input)
+            if context is not None and _forward_accepts_context(type(self)):
+                result = self.forward(input, context=context)
+            else:
+                result = self.forward(input)
         except Exception as exc:
             _bus.publish(Event(EventType.MODULE_FAILED, self._name, payload={"error": str(exc)}))
             if isinstance(exc, RegistryError):
@@ -109,7 +134,7 @@ class Module:
         _bus.publish(Event(EventType.MODULE_FINISHED, self._name))
         return result
 
-    def forward(self, input: Any) -> Any:
+    def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
         raise NotImplementedError(f"{type(self).__name__} must implement forward().")
 
     # -- inspection ------------------------------------------------------
