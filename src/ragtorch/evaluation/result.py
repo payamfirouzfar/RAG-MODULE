@@ -10,6 +10,7 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any
 
 
@@ -73,11 +74,15 @@ class EvaluationResult:
         }
 
 
+@lru_cache(maxsize=1)
 def current_git_commit() -> str | None:
     """Best-effort short git commit hash for the current working directory.
 
     Returns None (never raises) when not in a git repo or git isn't
-    available — evaluation must still work without git.
+    available — evaluation must still work without git. Cached for the
+    life of the process: the commit cannot change without a new process,
+    and shelling out to git on every Evaluator.evaluate() call would make
+    repeated evaluation (e.g. in a benchmark loop) needlessly slow.
     """
     try:
         result = subprocess.run(
