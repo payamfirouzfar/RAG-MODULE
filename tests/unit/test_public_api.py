@@ -13,6 +13,8 @@ def test_public_exports_present():
         "RAGConfig",
         "ExecutionContext",
         "new_run_id",
+        "Run",
+        "RunStatus",
         "RAGTorchError",
         "ConfigurationError",
         "ModuleError",

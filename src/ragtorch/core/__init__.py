@@ -12,6 +12,7 @@ from ragtorch.core.errors import (
 )
 from ragtorch.core.events import Event, EventBus, EventType
 from ragtorch.core.module import Module, RAGModule, event_bus
+from ragtorch.core.run import Run, RunStatus
 from ragtorch.core.sequential import Sequential
 
 __all__ = [
@@ -21,6 +22,8 @@ __all__ = [
     "RAGConfig",
     "ExecutionContext",
     "new_run_id",
+    "Run",
+    "RunStatus",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",
