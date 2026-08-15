@@ -6,11 +6,15 @@ public release without changing the underlying design.
 
 ## Status
 
-**Step 1 — Framework Kernel.** This repository currently contains only the
-core kernel: `Module`, `RAGModule`, `Sequential`, configuration, errors, and
-events. There is intentionally **no LLM, embedding, vector store, or
-orchestration integration yet**. Those are built on top of this foundation
-in later steps.
+**Step 2 — Execution, Observability & Evaluation Kernel.** This repository
+contains the core kernel (`Module`, `RAGModule`, `Sequential`,
+configuration, errors, events) plus execution identity (`ExecutionContext`,
+`Run`), observability (`Trace`/`Span`, `MetricsCollector`, structured
+logging), and a model-agnostic evaluation framework (`ragtorch.evaluation`).
+There is intentionally **no LLM, embedding, vector store, or orchestration
+integration yet**. Those are built on top of this foundation in later
+steps — see `docs/architecture/requirements.md` for the vendor/model/
+storage-independence rules that will govern them.
 
 ## Design principle
 
@@ -49,6 +53,19 @@ print(pipeline("hello"))  # "OLLEH"
 print(pipeline.inspect())
 ```
 
+Evaluating any callable system (no LLM required):
+
+```python
+from ragtorch.evaluation import EvaluationCase, Evaluator, ExactMatch
+
+cases = [
+    EvaluationCase(input="ab", expected="BA", name="case-1"),
+    EvaluationCase(input="hi", expected="IH", name="case-2"),
+]
+result = Evaluator([ExactMatch()]).evaluate(pipeline, cases)
+print(result.mean("exact_match"))  # 1.0
+```
+
 ## Development
 
 ```bash
@@ -61,11 +78,13 @@ mypy                         # type check
 ## Repository layout
 
 ```text
-src/ragtorch/core/    core kernel (Module, Sequential, config, errors, events)
-tests/unit/            unit tests
-tests/integration/      integration tests
-docs/architecture/decisions/   ADRs
-evaluation/            milestone evaluation reports
+src/ragtorch/core/         core kernel + execution/observability primitives
+src/ragtorch/evaluation/    model-agnostic evaluation framework
+tests/unit/                  unit tests
+tests/integration/            integration tests
+docs/architecture/decisions/    ADRs
+docs/architecture/requirements.md   frozen project-wide requirements
+evaluation/                       milestone evaluation reports and benchmarks
 ```
 
 ## Contributing
