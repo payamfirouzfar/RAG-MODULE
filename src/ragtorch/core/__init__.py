@@ -14,6 +14,7 @@ from ragtorch.core.events import Event, EventBus, EventType
 from ragtorch.core.module import Module, RAGModule, event_bus
 from ragtorch.core.run import Run, RunStatus
 from ragtorch.core.sequential import Sequential
+from ragtorch.core.trace import Span, Trace, new_span_id
 
 __all__ = [
     "Module",
@@ -24,6 +25,9 @@ __all__ = [
     "new_run_id",
     "Run",
     "RunStatus",
+    "Trace",
+    "Span",
+    "new_span_id",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",

@@ -23,9 +23,12 @@ from ragtorch.core import (
     Run,
     RunStatus,
     Sequential,
+    Span,
+    Trace,
     ValidationError,
     event_bus,
     new_run_id,
+    new_span_id,
 )
 
 __version__ = "0.2.0"
@@ -40,6 +43,9 @@ __all__ = [
     "new_run_id",
     "Run",
     "RunStatus",
+    "Trace",
+    "Span",
+    "new_span_id",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",
