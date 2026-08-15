@@ -11,6 +11,7 @@ from ragtorch.core.errors import (
     ValidationError,
 )
 from ragtorch.core.events import Event, EventBus, EventType
+from ragtorch.core.metrics import MetricsCollector, MetricSummary
 from ragtorch.core.module import Module, RAGModule, event_bus
 from ragtorch.core.run import Run, RunStatus
 from ragtorch.core.sequential import Sequential
@@ -28,6 +29,8 @@ __all__ = [
     "Trace",
     "Span",
     "new_span_id",
+    "MetricsCollector",
+    "MetricSummary",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",

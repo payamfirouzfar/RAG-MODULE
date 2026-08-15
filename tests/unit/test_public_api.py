@@ -18,6 +18,8 @@ def test_public_exports_present():
         "Trace",
         "Span",
         "new_span_id",
+        "MetricsCollector",
+        "MetricSummary",
         "RAGTorchError",
         "ConfigurationError",
         "ModuleError",
