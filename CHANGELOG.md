@@ -4,6 +4,29 @@ All notable changes to this project are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/), and this
 project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - Step 3: Execution Engine + Module Lifecycle + Observability Contract
+
+### Added
+
+- `ExecutionEngine`: coordinates `Run`/`Trace`/`MetricsCollector` around a
+  single `Module` call as a guaranteed contract instead of a convention
+  every caller must re-derive (ADR-006).
+- `ObservabilityLevel`: `OFF` (Run only), `BASIC` (default; adds a
+  duration metric), `DEBUG` (adds a trace span and start/finish/failure
+  structured log events). `FULL` explicitly deferred until
+  retrieval/generation components exist to populate it.
+- `ExecutionResult`: the `run`/`trace`/`metrics` produced by one
+  `engine.execute()` call, with an `.output` convenience property.
+- Integration tests: engine executing a `Sequential` composite pipeline
+  end-to-end (success and failure paths), and `Evaluator` scoring a system
+  driven through `ExecutionEngine.execute()`.
+- ADR-006: execution engine responsibility, lifecycle, error semantics,
+  context-propagation scope, observability levels, and performance
+  budgets — plus why `RunArtifact` persistence is deferred to its own
+  future ADR rather than built prematurely.
+- Step 3 performance baseline, checked against the ADR-006 budgets (both
+  passed with wide margin).
+
 ## [0.2.0] - Step 2: Execution, Observability & Evaluation Kernel
 
 ### Added

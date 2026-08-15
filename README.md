@@ -6,12 +6,15 @@ public release without changing the underlying design.
 
 ## Status
 
-**Step 2 — Execution, Observability & Evaluation Kernel.** This repository
-contains the core kernel (`Module`, `RAGModule`, `Sequential`,
-configuration, errors, events) plus execution identity (`ExecutionContext`,
-`Run`), observability (`Trace`/`Span`, `MetricsCollector`, structured
-logging), and a model-agnostic evaluation framework (`ragtorch.evaluation`).
-There is intentionally **no LLM, embedding, vector store, or orchestration
+**Step 3 — Execution Engine + Module Lifecycle + Observability Contract.**
+This repository contains the core kernel (`Module`, `RAGModule`,
+`Sequential`, configuration, errors, events), execution identity
+(`ExecutionContext`, `Run`), observability primitives (`Trace`/`Span`,
+`MetricsCollector`, structured logging), a model-agnostic evaluation
+framework (`ragtorch.evaluation`), and now `ExecutionEngine` — which
+coordinates `Run`/`Trace`/`Metrics` around a `Module` call as a guaranteed
+contract, at three observability levels (`OFF`/`BASIC`/`DEBUG`). There is
+intentionally **no LLM, embedding, vector store, or orchestration
 integration yet**. Those are built on top of this foundation in later
 steps — see `docs/architecture/requirements.md` for the vendor/model/
 storage-independence rules that will govern them.
@@ -64,6 +67,19 @@ cases = [
 ]
 result = Evaluator([ExactMatch()]).evaluate(pipeline, cases)
 print(result.mean("exact_match"))  # 1.0
+```
+
+Executing with a guaranteed observability contract:
+
+```python
+from ragtorch import ExecutionEngine, ObservabilityLevel
+
+engine = ExecutionEngine(level=ObservabilityLevel.DEBUG)
+result = engine.execute(pipeline, "hello")
+print(result.output)  # "OLLEH"
+print(result.run.status)  # RunStatus.SUCCEEDED
+print(result.trace.render())  # indented span tree
+print(result.metrics.summarize_all())
 ```
 
 ## Development
