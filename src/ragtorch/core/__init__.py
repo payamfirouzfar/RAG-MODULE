@@ -1,5 +1,6 @@
 """Core kernel: framework-agnostic abstractions with no vendor dependencies."""
 
+from ragtorch.core.component import Component
 from ragtorch.core.config import RAGConfig
 from ragtorch.core.context import ExecutionContext, new_run_id
 from ragtorch.core.engine import ExecutionEngine, ExecutionResult, ObservabilityLevel
@@ -20,6 +21,7 @@ from ragtorch.core.sequential import Sequential
 from ragtorch.core.trace import Span, Trace, new_span_id
 
 __all__ = [
+    "Component",
     "Module",
     "RAGModule",
     "Sequential",

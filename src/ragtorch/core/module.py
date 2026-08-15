@@ -1,7 +1,9 @@
 """The Module contract: the core composable execution primitive.
 
-Module remains the backward-compatible implementation primitive while the
-v0.1 architecture evolves toward an explicit Component contract.
+Module remains the concrete implementation primitive. It structurally
+satisfies the public Component contract (ragtorch.core.component) via
+the name/component_type properties below, without inheriting from it —
+see ADR-010.
 """
 
 from __future__ import annotations
@@ -55,6 +57,20 @@ class Module:
     def __init__(self) -> None:
         object.__setattr__(self, "_modules", OrderedDict())
         object.__setattr__(self, "_name", self.__class__.__name__)
+
+    @property
+    def name(self) -> str:
+        """Return the module's runtime name (see ADR-010: Component contract)."""
+        return self._name
+
+    @property
+    def component_type(self) -> str:
+        """Return the module's component type descriptor (see ADR-010).
+
+        Currently ``type(self).__name__`` — descriptive identity, not
+        yet a stable serialization identifier.
+        """
+        return type(self).__name__
 
     def __setattr__(self, name: str, value: Any) -> None:
         modules = self.__dict__.get("_modules")
