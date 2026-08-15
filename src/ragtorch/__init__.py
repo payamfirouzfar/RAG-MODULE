@@ -1,9 +1,10 @@
 """ragtorch: a framework kernel for building modular RAG systems.
 
-Step 1 provides only the core kernel — Module, RAGModule, Sequential,
-configuration, errors, and events. No LLM, embedding, or vector-store
-integrations live here; those are built on top of this foundation in
-later steps.
+Step 1 provided the core kernel — Module, RAGModule, Sequential,
+configuration, errors, and events. Step 2 adds execution identity,
+observability (traces, metrics, structured logs), and evaluation
+primitives. No LLM, embedding, or vector-store integrations live
+here; those are built on top of this foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -11,6 +12,7 @@ from ragtorch.core import (
     Event,
     EventBus,
     EventType,
+    ExecutionContext,
     ExecutionError,
     Module,
     ModuleError,
@@ -21,9 +23,10 @@ from ragtorch.core import (
     Sequential,
     ValidationError,
     event_bus,
+    new_run_id,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "__version__",
@@ -31,6 +34,8 @@ __all__ = [
     "RAGModule",
     "Sequential",
     "RAGConfig",
+    "ExecutionContext",
+    "new_run_id",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",

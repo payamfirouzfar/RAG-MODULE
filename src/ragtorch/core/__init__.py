@@ -1,6 +1,7 @@
 """Core kernel: framework-agnostic abstractions with no vendor dependencies."""
 
 from ragtorch.core.config import RAGConfig
+from ragtorch.core.context import ExecutionContext, new_run_id
 from ragtorch.core.errors import (
     ConfigurationError,
     ExecutionError,
@@ -18,6 +19,8 @@ __all__ = [
     "RAGModule",
     "Sequential",
     "RAGConfig",
+    "ExecutionContext",
+    "new_run_id",
     "RAGTorchError",
     "ConfigurationError",
     "ModuleError",

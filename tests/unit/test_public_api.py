@@ -11,6 +11,8 @@ def test_public_exports_present():
         "RAGModule",
         "Sequential",
         "RAGConfig",
+        "ExecutionContext",
+        "new_run_id",
         "RAGTorchError",
         "ConfigurationError",
         "ModuleError",
