@@ -16,6 +16,7 @@ from ragtorch.core.events import Event, EventBus, EventType
 from ragtorch.core.logging import get_logger, is_sensitive_key, log_event, redact
 from ragtorch.core.metrics import MetricsCollector, MetricSummary
 from ragtorch.core.module import Module, RAGModule, event_bus
+from ragtorch.core.ports import InputPort, OutputPort, is_compatible
 from ragtorch.core.run import Run, RunStatus
 from ragtorch.core.sequential import Sequential
 from ragtorch.core.trace import Span, Trace, new_span_id
@@ -35,6 +36,9 @@ __all__ = [
     "new_span_id",
     "MetricsCollector",
     "MetricSummary",
+    "InputPort",
+    "OutputPort",
+    "is_compatible",
     "ExecutionEngine",
     "ExecutionResult",
     "ObservabilityLevel",
