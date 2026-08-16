@@ -18,6 +18,7 @@ from ragtorch.core.events import Event, EventBus, EventType
 
 if TYPE_CHECKING:
     from ragtorch.core.context import ExecutionContext
+    from ragtorch.core.inspection import ArchitectureNode, ArchitectureSnapshot
 
 _bus = EventBus()
 
@@ -176,11 +177,28 @@ class Module:
     def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
         raise NotImplementedError(f"{type(self).__name__} must implement forward().")
 
+    def snapshot(self) -> ArchitectureSnapshot:
+        """Return the canonical, immutable architecture snapshot (ADR-012).
+
+        This is the single source of truth for this module's structure;
+        inspect() renders text from it rather than walking the tree a
+        second, independent way.
+        """
+        from ragtorch.core.inspection import snapshot as _snapshot
+
+        return _snapshot(self)
+
     def inspect(self) -> str:
         """Return a detailed, indented tree of this module's architecture."""
+        arch = self.snapshot()
+        children_by_parent: dict[str, list[str]] = {}
+        for child in arch.children:
+            children_by_parent.setdefault(child.parent_id, []).append(child.child_id)
+        nodes_by_id = {node.id: node for node in arch.nodes}
+
         lines: list[str] = []
-        module_count = sum(1 for _ in self.modules())
-        depth = _max_depth(self)
+        module_count = len(arch.nodes)
+        depth = _snapshot_depth(arch.nodes[0].id, children_by_parent)
         lines.append("Architecture")
         lines.append("-" * 12)
         lines.append("")
@@ -188,7 +206,9 @@ class Module:
         lines.append(f"Depth: {depth}")
         lines.append("")
         lines.append(self._name)
-        lines.extend(_inspect_children(self, indent="    "))
+        lines.extend(
+            _render_children(arch.nodes[0].id, children_by_parent, nodes_by_id, indent="    ")
+        )
         return "\n".join(lines)
 
     def __repr__(self) -> str:
@@ -198,19 +218,26 @@ class Module:
         return f"{self._name}(\n{child_reprs}\n)"
 
 
-def _inspect_children(module: Module, indent: str) -> list[str]:
+def _render_children(
+    node_id: str,
+    children_by_parent: dict[str, list[str]],
+    nodes_by_id: dict[str, ArchitectureNode],
+    indent: str,
+) -> list[str]:
     lines: list[str] = []
-    for name, child in module.named_children():
-        lines.append(f"{indent}{name} ({type(child).__name__})")
-        lines.extend(_inspect_children(child, indent + "    "))
+    for child_id in children_by_parent.get(node_id, []):
+        child = nodes_by_id[child_id]
+        display_name = child_id.rsplit(".", 1)[-1]
+        lines.append(f"{indent}{display_name} ({child.component_type})")
+        lines.extend(_render_children(child_id, children_by_parent, nodes_by_id, indent + "    "))
     return lines
 
 
-def _max_depth(module: Module) -> int:
-    children = list(module.children())
-    if not children:
+def _snapshot_depth(node_id: str, children_by_parent: dict[str, list[str]]) -> int:
+    child_ids = children_by_parent.get(node_id, [])
+    if not child_ids:
         return 1
-    return 1 + max(_max_depth(child) for child in children)
+    return 1 + max(_snapshot_depth(child_id, children_by_parent) for child_id in child_ids)
 
 
 class RAGModule(Module):

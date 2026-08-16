@@ -15,12 +15,19 @@ so future components can be recognized by the framework without a
 ragtorch dependency. Step 7 adds InputPort/OutputPort/is_compatible,
 optional architecture metadata describing a component's input/output
 boundary so two independent components can be checked for
-compatibility without executing either. No LLM, embedding, or
-vector-store integrations live here; those are built on top of this
-foundation in later steps.
+compatibility without executing either. Step 8 adds
+ArchitectureSnapshot: a canonical, immutable description of a Module
+tree (nodes + parent/child structure), built by walking the tree
+exactly once. Module.inspect() now renders text from this snapshot
+internally rather than an independent tree walk, keeping its output
+unchanged. No LLM, embedding, or vector-store integrations live here;
+those are built on top of this foundation in later steps.
 """
 
 from ragtorch.core import (
+    ArchitectureChild,
+    ArchitectureNode,
+    ArchitectureSnapshot,
     Component,
     ConfigurationError,
     Event,
@@ -55,6 +62,7 @@ from ragtorch.core import (
     new_run_id,
     new_span_id,
     redact,
+    snapshot,
 )
 
 __version__ = "0.4.0"
@@ -78,6 +86,10 @@ __all__ = [
     "InputPort",
     "OutputPort",
     "is_compatible",
+    "ArchitectureNode",
+    "ArchitectureChild",
+    "ArchitectureSnapshot",
+    "snapshot",
     "ExecutionEngine",
     "ExecutionResult",
     "ObservabilityLevel",
