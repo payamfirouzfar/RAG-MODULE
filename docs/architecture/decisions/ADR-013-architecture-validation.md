@@ -2,7 +2,15 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Verified via GitHub Actions (PR #4, run 31922950668): 224/224 tests
+passing on Python 3.10, 3.11, and 3.12, on the first CI run after
+pushing. All ten rules, including the two Staff-review corrections
+(the diamond multiple-parents counter-example and the disconnected-
+cycle reachability case), were verified both by direct construction
+during design and by dedicated regression tests before this status
+change. See `evaluation/step9-evaluation.md` for the full account.
 
 ## Context
 
