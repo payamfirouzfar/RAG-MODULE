@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from ragtorch.core.connection import Connection
 from ragtorch.core.errors import ValidationError
 from ragtorch.core.ports import InputPort, OutputPort, check_connection, is_compatible
 
@@ -57,3 +58,38 @@ def test_check_connection_passes_reranker_to_reranker() -> None:
 def test_check_connection_rejects_retriever_to_generator() -> None:
     with pytest.raises(ValidationError):
         check_connection(FakeRetriever.output_port, FakeGenerator.input_port)
+
+
+# --- Connection (ADR-015) -------------------------------------------------
+
+
+def test_connection_constructs_for_retriever_to_reranker() -> None:
+    connection = Connection(
+        source_node_id="retriever",
+        source_port=FakeRetriever.output_port,
+        target_node_id="reranker",
+        target_port=FakeReranker.input_port,
+    )
+    assert connection.source_node_id == "retriever"
+    assert connection.target_node_id == "reranker"
+
+
+def test_connection_constructs_for_reranker_to_generator() -> None:
+    connection = Connection(
+        source_node_id="reranker",
+        source_port=OutputPort(name="prompt", type=str),
+        target_node_id="generator",
+        target_port=FakeGenerator.input_port,
+    )
+    assert connection.source_node_id == "reranker"
+    assert connection.target_node_id == "generator"
+
+
+def test_connection_rejects_retriever_to_generator() -> None:
+    with pytest.raises(ValidationError):
+        Connection(
+            source_node_id="retriever",
+            source_port=FakeRetriever.output_port,
+            target_node_id="generator",
+            target_port=FakeGenerator.input_port,
+        )
