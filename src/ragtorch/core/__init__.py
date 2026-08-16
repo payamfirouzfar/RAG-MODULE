@@ -1,6 +1,7 @@
 """Core kernel: framework-agnostic abstractions with no vendor dependencies."""
 
 from ragtorch.core.architecture import validate_snapshot
+from ragtorch.core.block import Block
 from ragtorch.core.component import Component
 from ragtorch.core.composition import CompositionGraph, GraphNode
 from ragtorch.core.config import RAGConfig
@@ -39,6 +40,7 @@ from ragtorch.core.sequential import Sequential
 from ragtorch.core.trace import Span, Trace, new_span_id
 
 __all__ = [
+    "Block",
     "Component",
     "CompositionGraph",
     "GraphNode",
