@@ -83,7 +83,7 @@ This matrix converts the frozen requirements into verifiable engineering obligat
 | A62 | Composition graph iteration order is deterministic | ADR-016; `nodes`/`connections` are ordered tuples, not sets | none | `test_iteration_order_is_stable_across_repeated_access`, `test_equal_graphs_iterate_in_same_order`, `test_add_node_appends_new_node_last` |
 | A63 | Composition graph construction and every operation never execute a component | ADR-016; no `component.__call__` is ever invoked | none — this is a permanent constraint, not a gap | `test_construction_never_executes_component`, `test_graph_operations_never_execute_component` (both use an `ExplodingComponent` that raises if invoked) |
 | A64 | Composition graph construction is provider-independent | ADR-016; `composition.py` imports only `ragtorch.core.component`/`ragtorch.core.connection`/`ragtorch.core.errors` | none | `test_composition_module_has_no_provider_dependencies` (AST-based, reusing the established pattern) |
-| A65 | A valid `CompositionGraph` can be transformed into a deterministic, immutable, dependency-aware `ExecutionPlan` without executing components, depending on `ExecutionEngine`, retaining runtime objects, or mutating/retaining the source graph | ADR-017 (Proposed — not yet implemented); `plan(graph: CompositionGraph) -> ExecutionPlan`, iterative Kahn's algorithm tie-broken by the graph's own deterministic node order | implementation, tests, benchmark, and CI all pending — this row records the architectural decision only, per the project's standing rule that an ADR decision is not proof until implementation/tests/CI independently confirm it | planned: unit tests for topological correctness (E1-E12 in ADR-017), equality/immutability/snapshot-semantics tests (13A review items), `benchmarks/step13_execution_plan.py` |
+| A65 | A valid `CompositionGraph` can be transformed into a deterministic, immutable, dependency-aware `ExecutionPlan` without executing components, depending on `ExecutionEngine`, retaining runtime objects, or mutating/retaining the source graph | ADR-017; `src/ragtorch/core/execution_plan.py`; `plan(graph: CompositionGraph) -> ExecutionPlan`, FIFO Kahn's algorithm (`collections.deque`) — corrected during a two-round 13B.3/13B.5 adversarial review before implementation (ADV-01 BLOCKER: LIFO vs. FIFO queue discipline; ADV-04 MINOR: two distinct tie-break rules, not one) | none for the scoped contract; awaiting post-merge CI confirmation on `main` (PR CI already green — 329/329 on 3.10/3.11/3.12 — but not yet proof of the merged mainline per the project's standing "PR green ≠ proven" rule) | `tests/unit/core/test_execution_plan.py` (28 tests), `tests/integration/test_execution_plan_composition.py` (5 tests), `benchmarks/step13_execution_plan.py` (10/100/1,000/10,000-node scaling, three shapes), PR #9 CI run `31954270963` |
 
 ## Step 5 status
 
@@ -312,13 +312,60 @@ Benchmarked scaling (10/100/1,000-node linear chains) confirms the
 O(N+E) design empirically: node count growing 10x costs roughly 10-12x
 time, not ~100x — see `evaluation/step12-evaluation.md`.
 
+## Step 13 status
+
+Execution planning (A65) is implemented per ADR-017:
+`ragtorch.core.execution_plan.plan()`, deriving a deterministic
+`ExecutionPlan` (ordered `ExecutionStep`s, each carrying `node_id` and
+direct `dependencies`) from a valid `CompositionGraph` via Kahn's
+algorithm with an explicit FIFO `collections.deque` ready queue.
+`Component`, `Module`, `Sequential`, `ExecutionEngine`,
+`ExecutionContext`, `ArchitectureSnapshot`, `CompositionGraph`
+(including `_has_cycle()`, whose LIFO shape was deliberately left
+unchanged), and `Connection` are all unchanged — zero lines touched;
+`execution_plan.py` is a new, standalone module.
+
+This step is the first in the project to go through **two rounds of
+adversarial architectural review before any implementation existed**.
+13B.3 found one BLOCKER (ADV-01): the ADR's first draft claimed
+`plan()` reuses `CompositionGraph._has_cycle()`'s exact traversal
+shape for its declared-order tie-break, which direct construction
+proved false — `_has_cycle()`'s queue is LIFO, and would have silently
+reversed ties relative to the declared order the ADR promised. 13B.5,
+re-attacking the corrected FIFO design rather than assuming the fix
+was sufficient, found a second, more subtle issue (ADV-04, MINOR):
+"tie-broken by graph.nodes order" is precise only for nodes ready at
+the very start of planning — nodes that become ready mid-traversal are
+ordered by `graph.connections` discovery order instead, a genuinely
+different (though equally deterministic) rule. Both findings are
+reflected as named regression tests, not just prose, so a future
+refactor cannot silently reintroduce either defect.
+
+`plan()` does not re-validate graph structure, never executes a
+component, never mutates or retains a reference to its source graph,
+and contains no runtime objects — proven by dedicated tests
+(`ExplodingComponent`, `dataclasses.fields()` introspection,
+before/after snapshot comparison), not merely asserted from the ADR's
+design intent.
+
+Benchmarked scaling (10/100/1,000/10,000-node linear chains and wide
+fan-out, plus two diamond-heavy shapes) confirms roughly linear growth
+through 1,000 nodes with a modest superlinear tail at 10,000 —
+reported as measured, not smoothed over — see
+`evaluation/step13-evaluation.md`. No `RecursionError` or other
+scale-dependent failure occurred at any tested size, since `plan()`
+used an iterative `deque`-based algorithm from its first
+implementation, unlike Step 12's `_has_cycle()`, which required a
+post-hoc fix after failing at 1,000 nodes.
+
 ## Next priority
 
 1. Add concurrency tests around event identity before moving event delivery to execution-scoped ownership.
 2. Design a `Block` type that consumes `CompositionGraph` (Step 12) as its validated structural foundation — the payoff every primitive since Step 6 exists to enable.
-3. Consider whether the pre-existing `Module` cycle-registration gap (A29's named limitation) is worth a dedicated future ADR.
-4. Consider whether `CompositionGraph`'s full-revalidation-per-update cost (A61's named limitation) is worth an incremental-validation optimization, once a real workload demonstrates it matters.
-5. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
+3. Design an executor that consumes `ExecutionPlan` (Step 13) — synchronous first, with the data model already proven not to foreclose async/parallel execution later.
+4. Consider whether the pre-existing `Module` cycle-registration gap (A29's named limitation) is worth a dedicated future ADR.
+5. Consider whether `CompositionGraph`'s full-revalidation-per-update cost (A61's named limitation) is worth an incremental-validation optimization, once a real workload demonstrates it matters.
+6. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
 
 The Component migration is intentionally **not** a rename of `Module`. We
 first proved the contract and compatibility boundary (Step 6) before any

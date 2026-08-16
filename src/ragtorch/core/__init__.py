@@ -16,6 +16,7 @@ from ragtorch.core.errors import (
     ValidationError,
 )
 from ragtorch.core.events import Event, EventBus, EventType
+from ragtorch.core.execution_plan import ExecutionPlan, ExecutionStep, plan
 from ragtorch.core.inspection import (
     ArchitectureChild,
     ArchitectureNode,
@@ -59,6 +60,9 @@ __all__ = [
     "validate_snapshot",
     "ExecutionEngine",
     "ExecutionResult",
+    "ExecutionPlan",
+    "ExecutionStep",
+    "plan",
     "ObservabilityLevel",
     "get_logger",
     "log_event",
