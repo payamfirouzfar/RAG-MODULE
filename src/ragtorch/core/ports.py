@@ -10,9 +10,27 @@ and why compatibility is deliberately conservative (exact/subtype only).
 
 from __future__ import annotations
 
+import types
 from dataclasses import dataclass
 
 from ragtorch.core.errors import ValidationError
+
+
+def _is_concrete_class(value: object) -> bool:
+    """Is ``value`` an actual Python class, not a generic alias?
+
+    isinstance(x, type) is NOT a reliable way to detect this across the
+    project's supported Python range: on Python 3.10, a builtin generic
+    alias such as ``list[Document]`` (an instance of
+    ``types.GenericAlias``) reports ``isinstance(list[Document], type)
+    is True`` — this changed to ``False`` in a later 3.x release.
+    Verified directly against 3.10/3.12 interpreters, not assumed;
+    caught by CI (which runs 3.10/3.11/3.12) after passing on a local
+    3.12-only environment. ``types.GenericAlias`` is therefore excluded
+    explicitly, on every supported version, regardless of what
+    isinstance(x, type) happens to report there.
+    """
+    return isinstance(value, type) and not isinstance(value, types.GenericAlias)
 
 
 @dataclass(frozen=True)
@@ -23,7 +41,7 @@ class InputPort:
     type: type
 
     def __post_init__(self) -> None:
-        if not isinstance(self.type, type):
+        if not _is_concrete_class(self.type):
             raise ValidationError(
                 f"InputPort '{self.name}' requires a Python class as type, got {self.type!r}."
             )
@@ -37,7 +55,7 @@ class OutputPort:
     type: type
 
     def __post_init__(self) -> None:
-        if not isinstance(self.type, type):
+        if not _is_concrete_class(self.type):
             raise ValidationError(
                 f"OutputPort '{self.name}' requires a Python class as type, got {self.type!r}."
             )

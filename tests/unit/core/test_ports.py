@@ -48,7 +48,14 @@ def test_input_port_rejects_non_class_int() -> None:
 
 
 def test_input_port_rejects_generic_alias() -> None:
-    """list[X] is not isinstance(x, type) - a generic alias, not a class."""
+    """list[X] must be rejected on every supported Python version.
+
+    isinstance(list[Document], type) is version-dependent (True on
+    3.10, False on 3.12) - caught by CI running 3.10/3.11/3.12 after
+    passing locally on a 3.12-only environment. ports.py explicitly
+    excludes types.GenericAlias rather than relying on isinstance(x,
+    type) alone; this test is the regression guard for that fix.
+    """
 
     class Document:
         pass

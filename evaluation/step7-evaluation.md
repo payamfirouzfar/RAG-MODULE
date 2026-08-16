@@ -31,7 +31,7 @@ composition layer, not the composition layer itself.
 | Unrelated types are incompatible                                                         | PASS |
 | `object` input accepts any class (documented Python behavior, not a special case)           | PASS |
 | Non-class `type` value (string, int) raises `ValidationError` at construction                  | PASS |
-| Generic alias (`list[Document]`) raises `ValidationError` at construction (not a class)            | PASS |
+| Generic alias (`list[Document]`) raises `ValidationError` at construction (not a class)            | PASS (see CI section — this required a real fix; initially passed locally on 3.12 for the wrong reason, failed on CI's 3.10/3.11) |
 | Ports are immutable (frozen dataclass)                                                                | PASS |
 | `is_compatible()` does not execute either component                                                     | PASS |
 | No `get_type_hints`/`eval`/`exec` anywhere in `ports.py` (verified by source inspection, not assumed)      | PASS |
@@ -102,7 +102,45 @@ Demonstrates the actual payoff this ADR exists for: a wrong connection
 between two independently-described, unrelated fake components is
 correctly and deterministically rejected without running either.
 
-## CI
+## CI — a real cross-version bug was caught here, not by local checks
+
+The first push to PR #3 **failed on all three Python versions** (3.10,
+3.11, 3.12) in `test_input_port_rejects_generic_alias`: "DID NOT RAISE
+ValidationError." This was not a flaky test — it was a genuine gap in
+local verification. Root cause, confirmed by testing directly against
+real interpreters (not assumed from documentation):
+
+```
+isinstance(list[Document], type)
+    Python 3.10: True
+    Python 3.12: False
+```
+
+`isinstance(x, type)` is **not a version-stable way to detect a builtin
+generic alias** (`list[X]`, `dict[K, V]`, etc., instances of
+`types.GenericAlias`) — this behavior changed within the project's own
+supported range (3.10-3.12). The local development environment used
+throughout this step was Python 3.12.0 only, where the original
+`isinstance(self.type, type)` check happened to correctly reject
+`list[Document]` — masking the bug until CI ran the same test on 3.10
+and 3.11.
+
+**Fix**: `ports.py`'s validation now explicitly excludes
+`types.GenericAlias` — `isinstance(value, type) and not
+isinstance(value, types.GenericAlias)` — rather than relying on
+`isinstance(x, type)` alone. Verified directly against real Python 3.10
+and 3.12 interpreters (`py -3.10`, not just the local 3.12 venv) before
+re-pushing, and the full 179-test suite re-run on both versions
+locally, not merely assumed fixed from the one-line change. `Union` and
+`Any` were separately confirmed to already behave consistently
+(`isinstance(x, type)` is `False` for both, on 3.10 and 3.12 alike) —
+only `types.GenericAlias` needed the explicit exclusion.
+
+This is exactly the failure mode CI-first verification exists to catch:
+a real, version-dependent bug that 100% of local tests (on the one
+Python version installed locally) could not have found, and that would
+have shipped as "179/179 passing" without ever being wrong on the
+machine that wrote it.
 
 Verified via GitHub Actions on push (see commit log for run IDs) —
 Python 3.10, 3.11, 3.12, following the same "local green != project
