@@ -24,9 +24,14 @@ unchanged. Step 9 adds validate_snapshot(), which checks that an
 ArchitectureSnapshot is a well-formed, non-empty rooted tree (unique
 ids, no dangling references, at most one parent per node, exactly one
 root, full reachability) and raises ValidationError with a specific
-message on the first violation found, or returns None. No LLM,
-embedding, or vector-store integrations live here; those are built on
-top of this foundation in later steps.
+message on the first violation found, or returns None. Step 10 adds
+check_connection(), a raising precondition wrapper over
+is_compatible(): "ask" (is_compatible, bool) vs. "enforce"
+(check_connection, raises ValidationError). It does not integrate with
+ArchitectureSnapshot/validate_snapshot() — that remains future work for
+a composition/Block layer. No LLM, embedding, or vector-store
+integrations live here; those are built on top of this foundation in
+later steps.
 """
 
 from ragtorch.core import (
@@ -59,6 +64,7 @@ from ragtorch.core import (
     Span,
     Trace,
     ValidationError,
+    check_connection,
     event_bus,
     get_logger,
     is_compatible,
@@ -92,6 +98,7 @@ __all__ = [
     "InputPort",
     "OutputPort",
     "is_compatible",
+    "check_connection",
     "ArchitectureNode",
     "ArchitectureChild",
     "ArchitectureSnapshot",

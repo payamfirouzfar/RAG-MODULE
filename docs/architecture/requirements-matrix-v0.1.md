@@ -55,6 +55,14 @@ This matrix converts the frozen requirements into verifiable engineering obligat
 | A34 | A valid architecture is acyclic | ADR-013 — no separate cycle-detection algorithm; proven (not merely asserted) that Rules 2/5/6 catch a connected cycle via zero-roots, and Rule 7 catches a disconnected cycle | none — deliberately not implemented as a redundant separate DFS pass | `test_cycle_produces_zero_roots_is_invalid`, `test_disconnected_cycle_is_invalid` |
 | A35 | Architecture validation is provider-independent | ADR-013; `architecture.py` imports only `ragtorch.core.errors`/`ragtorch.core.inspection` | none | `test_architecture_module_has_no_provider_dependencies` (AST-based, reusing the Step 7/8 pattern) |
 | A36 | Architecture validation does not mutate the snapshot | ADR-013; read-only, no automatic repair/deduplication/reordering | none | `test_validation_does_not_mutate_snapshot` |
+| A37 | A compatible port pair passes composition precondition checking | ADR-014; `ragtorch.core.ports.check_connection()`, `None` on success | none | `test_check_connection_returns_none_for_exact_types`, `test_check_connection_returns_none_for_compatible_subtype` |
+| A38 | An incompatible port pair raises on composition precondition checking | ADR-014; `ValidationError` (reused, no new exception type) | none | `test_check_connection_raises_for_incompatible_types` |
+| A39 | Composition precondition checking follows `is_compatible()`'s subtype rule exactly, with no separate compatibility logic | ADR-014; `check_connection()`'s body is exactly `if not is_compatible(...): raise ...` — verified by reading the implementation, not merely asserted | none — this is a permanent constraint, not a gap | `test_check_connection_returns_none_for_compatible_subtype`, plus the ADR-014 design rationale itself |
+| A40 | `is_compatible()`'s existing `bool` contract is unchanged by the addition of `check_connection()` | ADR-014; explicit regression pair | none | `test_is_compatible_remains_true_for_valid_pair_after_check_connection_added`, `test_is_compatible_remains_false_for_invalid_pair_after_check_connection_added` |
+| A41 | Composition precondition checking does not mutate either `Port` | ADR-014; both `Port` types are frozen dataclasses, re-asserted post-call | none | `test_check_connection_does_not_mutate_ports` |
+| A42 | Composition precondition checking is deterministic across repeated calls, on both success and failure paths | ADR-014 | none | `test_check_connection_is_deterministic_across_repeated_calls` |
+| A43 | The precondition-check error message identifies both port names and both type names | ADR-014 | none | `test_check_connection_error_contains_output_port_name`, `test_check_connection_error_contains_input_port_name`, `test_check_connection_error_contains_both_type_names` |
+| A44 | Composition precondition checking is provider-independent | ADR-014; `ports.py` imports only `ragtorch.core.errors` (unchanged from Step 7) | none | `test_ports_module_has_no_provider_dependencies` (AST-based, now covering `check_connection()` too) |
 
 ## Step 5 status
 
@@ -165,10 +173,40 @@ Benchmarked scaling (1/10/100/1,000-node trees) confirms the O(N+E)
 design empirically: node count growing 10x costs roughly 8-10x time,
 not ~100x — see `evaluation/step9-evaluation.md`.
 
+## Step 10 status
+
+Composition preconditions (A37-A44) are implemented per ADR-014:
+`ragtorch.core.ports.check_connection()`, a raising precondition
+wrapper — "ask" (`is_compatible()`, `bool`) vs. "enforce"
+(`check_connection()`, `None`/raises `ValidationError`). Its body is
+exactly `if not is_compatible(...): raise ...`, so `is_compatible()`
+remains the single source of truth for compatibility semantics; no
+parallel `issubclass()` logic was written. `Component`, `Module`,
+`Sequential`, `ExecutionEngine`, `ExecutionContext`,
+`ArchitectureSnapshot`, and `validate_snapshot()` are all unchanged —
+zero lines touched; `check_connection()` was added to the existing
+`ports.py` alongside `is_compatible()`, not a new module.
+
+This step deliberately does **not** integrate `check_connection()`
+with `ArchitectureSnapshot`/`validate_snapshot()`, and does not
+introduce a `Block`/composite type or graph executor — it proves the
+port-level precondition primitive in isolation, per the project's
+consistent "one primitive per step" discipline (Steps 6-9). An
+explicit regression pair proves `is_compatible()`'s pre-existing
+`bool` contract is unaffected by the addition, not merely assumed
+from "we didn't edit that function."
+
+Benchmarked overhead (`benchmarks/step10_composition_preconditions.py`):
+`check_connection(valid)` is indistinguishable from
+`is_compatible(valid)` (~0.1µs both); `check_connection(invalid)`
+costs ~0.7µs more, consistent with the added f-string construction and
+exception raise on the failure path — see
+`evaluation/step10-evaluation.md`.
+
 ## Next priority
 
 1. Add concurrency tests around event identity before moving event delivery to execution-scoped ownership.
-2. Design a `Block`/graph composition layer that uses `is_compatible()` (Ports), `ArchitectureSnapshot` (Step 8), and `validate_snapshot()` (Step 9) together to validate an actual architecture before execution — the payoff all three exist to enable.
+2. Design a `Block`/graph composition layer that uses `check_connection()` (Step 10), `ArchitectureSnapshot` (Step 8), and `validate_snapshot()` (Step 9) together to validate an actual architecture before execution — the payoff all three now exist to enable.
 3. Consider whether the pre-existing `Module` cycle-registration gap (A29's named limitation) is worth a dedicated future ADR.
 4. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
 

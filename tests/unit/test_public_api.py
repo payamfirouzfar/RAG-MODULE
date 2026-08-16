@@ -24,6 +24,7 @@ def test_public_exports_present():
         "InputPort",
         "OutputPort",
         "is_compatible",
+        "check_connection",
         "ArchitectureNode",
         "ArchitectureChild",
         "ArchitectureSnapshot",
