@@ -657,8 +657,15 @@ for A66, not left implicit.
   `node_id` string.
 - **EXEC-06** A later step's handler call receives a `context.results`
   containing every earlier step's already-computed value.
-- **EXEC-07** `result.values` contains exactly one entry per step,
-  keyed by `node_id`, with no duplicates and no missing steps.
+- **EXEC-07** For a valid `ExecutionPlan` satisfying ADR-017's
+  invariants (in particular, unique `node_id` per step — see
+  "Node-id uniqueness invariant"), `result.values` contains exactly
+  one entry per step, keyed by `node_id`, with no duplicates and no
+  missing steps. This test does not exercise or imply validation of an
+  invalid/malformed plan — constructing one is upstream's
+  responsibility (`CompositionGraph`/`plan()`, ADR-016/ADR-017), not
+  this executor's; see "Node-id uniqueness invariant" for why this
+  layer trusts rather than re-checks that guarantee.
 - **EXEC-08** Node-id uniqueness invariant: a regression test
   documents (via a plan built through the normal `plan()`/
   `CompositionGraph` path) that no two steps share a `node_id`, and
