@@ -2,7 +2,16 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Verified via GitHub Actions (PR #3, run 31918774186): 179/179 tests
+passing on Python 3.10, 3.11, and 3.12. The first push to this PR
+failed on all three versions due to a real cross-version bug
+(`isinstance(list[X], type)` differs between Python 3.10 and 3.12) that
+local testing on a single 3.12 environment could not have caught — see
+`evaluation/step7-evaluation.md` for the full account. Fixed and
+re-verified against real 3.10/3.12 interpreters and, definitively, real
+CI before this status was changed from Proposed.
 
 ## Context
 
