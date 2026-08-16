@@ -16,6 +16,13 @@ from ragtorch.core.errors import (
     ValidationError,
 )
 from ragtorch.core.events import Event, EventBus, EventType
+from ragtorch.core.execution import (
+    Executor,
+    SequentialExecutor,
+    StepExecutionContext,
+    StepExecutionResult,
+    StepHandler,
+)
 from ragtorch.core.execution_plan import ExecutionPlan, ExecutionStep, plan
 from ragtorch.core.inspection import (
     ArchitectureChild,
@@ -63,6 +70,11 @@ __all__ = [
     "ExecutionPlan",
     "ExecutionStep",
     "plan",
+    "Executor",
+    "SequentialExecutor",
+    "StepHandler",
+    "StepExecutionContext",
+    "StepExecutionResult",
     "ObservabilityLevel",
     "get_logger",
     "log_event",
