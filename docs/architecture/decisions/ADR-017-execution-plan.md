@@ -2,18 +2,32 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Confirmed by real GitHub Actions CI on the merged `main` branch after
+both PR #8 (this ADR + requirement A65, merge commit `27c7689`) and
+PR #9 (the `ExecutionPlan` implementation, merge commit `3e12aad`)
+were merged in that order: post-merge run
+[31959041975](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31959041975)
+on commit `3e12aad4b685bdb6e3bc62527173a22e44ee5beb` shows 329/329
+tests passing on Python 3.10, 3.11, and 3.12, with lint green on all
+three. Not accepted from PR CI alone — per the project's standing
+rule, PR-green is not proof; only post-merge CI on the actual `main`
+SHA counts as evidence.
 
 **Adversarial review history**: 13B.3 (first pass) returned BLOCK —
 one BLOCKER (ADV-01: the ready-queue discipline was underspecified and
 would silently produce the wrong tie-break if implemented by copying
 `CompositionGraph._has_cycle()`'s LIFO shape) and two MINOR findings
 (ADV-02: `ExecutionPlan` iteration protocol left undecided; ADV-03:
-export convention left unstated). All three are corrected in this
-revision — see "Ordering algorithm," "`ExecutionPlan` does not
+export convention left unstated). All three were corrected before
+implementation — see "Ordering algorithm," "`ExecutionPlan` does not
 implement `__iter__`/`__len__`/`__getitem__`," and "Public export"
-below. A second adversarial pass (13B.5) is required before this ADR
-is implementation-ready.
+below. A second adversarial pass (13B.5) found one further MINOR issue
+(ADV-04: the corrected tie-break claim was still imprecise for
+mid-traversal ties) and returned PASS after that correction. The
+implementation, its regression tests for both ADV-01 and ADV-04, and
+this acceptance are all now proven on `main`, not merely decided.
 
 ## Context
 
