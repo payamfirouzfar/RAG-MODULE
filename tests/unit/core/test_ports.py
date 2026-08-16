@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from ragtorch.core.errors import ValidationError
-from ragtorch.core.ports import InputPort, OutputPort, is_compatible
+from ragtorch.core.ports import InputPort, OutputPort, check_connection, is_compatible
 
 
 def test_input_port_stores_metadata() -> None:
@@ -156,3 +156,101 @@ def test_ports_module_has_no_provider_dependencies() -> None:
     for module_name in imported_modules:
         top_level = module_name.split(".")[0].lower()
         assert top_level not in forbidden, f"unexpected import: {module_name}"
+
+
+# --- check_connection() (ADR-014) ---------------------------------------
+
+
+def test_check_connection_returns_none_for_exact_types() -> None:
+    output = OutputPort(name="value", type=int)
+    input_port = InputPort(name="value", type=int)
+    assert check_connection(output, input_port) is None
+
+
+def test_check_connection_returns_none_for_compatible_subtype() -> None:
+    class Document:
+        pass
+
+    class DenseDocument(Document):
+        pass
+
+    output = OutputPort(name="document", type=DenseDocument)
+    input_port = InputPort(name="document", type=Document)
+    assert check_connection(output, input_port) is None
+
+
+def test_check_connection_raises_for_incompatible_types() -> None:
+    output = OutputPort(name="value", type=str)
+    input_port = InputPort(name="value", type=int)
+    with pytest.raises(ValidationError):
+        check_connection(output, input_port)
+
+
+def test_check_connection_error_contains_output_port_name() -> None:
+    output = OutputPort(name="documents", type=str)
+    input_port = InputPort(name="prompt", type=int)
+    with pytest.raises(ValidationError, match="documents"):
+        check_connection(output, input_port)
+
+
+def test_check_connection_error_contains_input_port_name() -> None:
+    output = OutputPort(name="documents", type=str)
+    input_port = InputPort(name="prompt", type=int)
+    with pytest.raises(ValidationError, match="prompt"):
+        check_connection(output, input_port)
+
+
+def test_check_connection_error_contains_both_type_names() -> None:
+    output = OutputPort(name="documents", type=str)
+    input_port = InputPort(name="prompt", type=int)
+    try:
+        check_connection(output, input_port)
+    except ValidationError as exc:
+        message = str(exc)
+        assert "str" in message
+        assert "int" in message
+    else:
+        pytest.fail("expected ValidationError")
+
+
+def test_is_compatible_remains_true_for_valid_pair_after_check_connection_added() -> None:
+    """Regression guard: check_connection() is additive, not a modification
+    of is_compatible()'s existing bool contract."""
+    output = OutputPort(name="value", type=int)
+    input_port = InputPort(name="value", type=int)
+    assert is_compatible(output, input_port) is True
+
+
+def test_is_compatible_remains_false_for_invalid_pair_after_check_connection_added() -> None:
+    output = OutputPort(name="value", type=str)
+    input_port = InputPort(name="value", type=int)
+    assert is_compatible(output, input_port) is False
+
+
+def test_check_connection_is_deterministic_across_repeated_calls() -> None:
+    output = OutputPort(name="value", type=int)
+    input_port = InputPort(name="value", type=int)
+    assert check_connection(output, input_port) is None
+    assert check_connection(output, input_port) is None
+
+    bad_output = OutputPort(name="value", type=str)
+    bad_input = InputPort(name="value", type=int)
+    for _ in range(2):
+        with pytest.raises(ValidationError):
+            check_connection(bad_output, bad_input)
+
+
+def test_check_connection_does_not_mutate_ports() -> None:
+    output = OutputPort(name="value", type=int)
+    input_port = InputPort(name="value", type=int)
+    check_connection(output, input_port)
+    assert output.name == "value"
+    assert output.type is int
+    assert input_port.name == "value"
+    assert input_port.type is int
+
+
+def test_check_connection_works_with_different_valid_class_types() -> None:
+    output = OutputPort(name="text", type=str)
+    input_port = InputPort(name="text", type=object)
+    assert check_connection(output, input_port) is None

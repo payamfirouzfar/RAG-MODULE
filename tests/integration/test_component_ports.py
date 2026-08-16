@@ -6,7 +6,10 @@ dependency."""
 
 from __future__ import annotations
 
-from ragtorch.core.ports import InputPort, OutputPort, is_compatible
+import pytest
+
+from ragtorch.core.errors import ValidationError
+from ragtorch.core.ports import InputPort, OutputPort, check_connection, is_compatible
 
 
 class FakeRetriever:
@@ -38,3 +41,19 @@ def test_incompatible_components_are_rejected() -> None:
 
 def test_retriever_output_cannot_feed_generator_input() -> None:
     assert not is_compatible(FakeRetriever.output_port, FakeGenerator.input_port)
+
+
+# --- check_connection() (ADR-014) ---------------------------------------
+
+
+def test_check_connection_passes_retriever_to_reranker() -> None:
+    assert check_connection(FakeRetriever.output_port, FakeReranker.input_port) is None
+
+
+def test_check_connection_passes_reranker_to_reranker() -> None:
+    assert check_connection(FakeReranker.output_port, FakeReranker.input_port) is None
+
+
+def test_check_connection_rejects_retriever_to_generator() -> None:
+    with pytest.raises(ValidationError):
+        check_connection(FakeRetriever.output_port, FakeGenerator.input_port)
