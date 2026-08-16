@@ -150,21 +150,29 @@ passed, mypy clean.
 | `plan()` — diamond-heavy, 20 nodes (4×5)                                                      | 22.9     |
 | `plan()` — diamond-heavy, 60 nodes (4×15)                                                         | 127.6    |
 
-### Empirical scaling confirmation
+### Observed scaling vs. the O(V+E) design target
+
+A benchmark cannot mathematically prove an asymptotic complexity
+bound; the table below reports what was measured, checked against
+what linear growth would predict, not a proof that the algorithm is
+O(V+E) — that claim rests on the algorithm's structure (one O(E) pass
+to build adjacency/in-degree/dependency structures, one O(V+E) Kahn
+traversal, no nested loop over nodes or connections anywhere in
+`plan()`, confirmed by direct code inspection), with this benchmark
+serving as a regression check against a future change accidentally
+introducing quadratic behavior.
 
 | N growth (linear chain) | p50 growth | Linear would predict |
 | -------- | ---------- | --------------------- |
-| 10 → 100 | 8.4x | 10x |
-| 100 → 1,000 | 11.4x | 10x |
-| 1,000 → 10,000 | 14.1x | 10x |
+| 10 → 100 | 8.4x–8.8x (two independent runs) | 10x |
+| 100 → 1,000 | 11.4x–12x | 10x |
+| 1,000 → 10,000 | 14.1x–15.4x | 10x |
 
 Growth stays close to linear through 1,000 nodes, with a modest
-superlinear tail at 10,000 nodes — reported as measured, not smoothed
-over; plausibly Python-level allocation/GC overhead at that scale
-rather than an algorithmic defect, since the implementation performs
-exactly one O(E) pass to build adjacency/in-degree structures followed
-by one O(V+E) Kahn traversal, with no nested loop over nodes or
-connections anywhere in `plan()`. No `RecursionError` or other
+superlinear tail at 10,000 nodes in both independent runs — reported
+as measured, not smoothed over; plausibly Python-level allocation/GC
+overhead at that scale rather than an algorithmic defect, given the
+structural argument above. No `RecursionError` or other
 scale-dependent failure occurred at any tested size — unlike Step 12's
 `_has_cycle()`, `plan()` used an iterative `deque`-based FIFO Kahn's
 algorithm from its first implementation, so no equivalent bug was

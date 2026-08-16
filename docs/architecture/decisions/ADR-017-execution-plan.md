@@ -501,14 +501,19 @@ prior to committing this ADR).
 - **Target complexity is O(V + E).** `plan()` is a single pass building
   an adjacency/in-degree structure from `connections` (O(E)) followed
   by Kahn's algorithm (O(V + E)) — the same complexity class
-  `CompositionGraph`'s own cycle detection already achieves (ADR-016,
-  empirically confirmed by the Step 12 benchmark's near-linear scaling
-  results). No step in `plan()` is quadratic in the number of nodes or
-  connections; the Step 13 benchmark (below) exists specifically to
-  confirm this empirically rather than by algorithm-design argument
-  alone, following the precedent set by Step 12's own benchmark
-  catching a real scaling defect that no amount of small-graph
-  correctness argument would have revealed.
+  `CompositionGraph`'s own cycle detection targets (ADR-016; the Step
+  12 benchmark's near-linear measured scaling is consistent with that
+  target, which is the most a benchmark can show — it cannot prove an
+  asymptotic bound). No step in `plan()` is quadratic in the number of
+  nodes or connections by inspection of its structure (one O(E) pass,
+  one O(V+E) traversal, no nested loop over nodes or connections); the
+  Step 13 benchmark (below) exists to check that measured scaling
+  stays consistent with this target at realistic sizes and to catch a
+  regression if a future change introduces quadratic behavior — not to
+  substitute for the structural argument, following the precedent set
+  by Step 12's own benchmark catching a real scaling defect
+  (`RecursionError`) that no amount of small-graph correctness
+  argument would have revealed.
 - **No independent re-implementation of graph validity.** `plan()`
   computes exactly one thing `CompositionGraph` does not already
   compute — an ordering — from data `CompositionGraph` already

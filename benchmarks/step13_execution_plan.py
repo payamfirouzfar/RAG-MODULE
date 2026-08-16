@@ -20,8 +20,11 @@ CompositionGraph._has_cycle() specifically by testing at 1,000 nodes
 that no small hand-built unit test exercised. plan() reuses an
 iterative (not recursive) FIFO Kahn's algorithm from the start, so no
 equivalent recursion-depth failure is expected here -- this benchmark
-exists to confirm the O(V+E) complexity claim empirically, not to
-hunt for a recursion bug that structurally cannot occur.
+exists to check that observed scaling is consistent with the intended
+O(V+E) algorithm at the tested sizes/shapes, and to catch a regression
+if a future change makes plan() accidentally quadratic. A benchmark
+cannot mathematically prove an asymptotic complexity bound; it can
+only show measurements that are, or are not, consistent with one.
 """
 
 from __future__ import annotations
