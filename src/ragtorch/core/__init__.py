@@ -3,6 +3,7 @@
 from ragtorch.core.architecture import validate_snapshot
 from ragtorch.core.component import Component
 from ragtorch.core.config import RAGConfig
+from ragtorch.core.connection import Connection
 from ragtorch.core.context import ExecutionContext, new_run_id
 from ragtorch.core.engine import ExecutionEngine, ExecutionResult, ObservabilityLevel
 from ragtorch.core.errors import (
@@ -30,6 +31,7 @@ from ragtorch.core.trace import Span, Trace, new_span_id
 
 __all__ = [
     "Component",
+    "Connection",
     "Module",
     "RAGModule",
     "Sequential",
