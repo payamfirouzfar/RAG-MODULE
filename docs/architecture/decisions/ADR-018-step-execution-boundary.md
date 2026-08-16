@@ -176,13 +176,16 @@ an earlier draft proposed testing statelessness via `vars(executor) ==
 might legitimately hold e.g. `self._metrics` without retaining
 execution state) rather than the actual invariant. The real invariant:
 **execution state from one `execute()` call must never affect another**
-— `executor.execute(plan_a, handler_a)` followed by
+— `executor.execute(plan_a, handler_a)` followed sequentially by
 `executor.execute(plan_b, handler_b)` on the same `SequentialExecutor`
 instance must behave identically to two separate instances, and the
-same executor instance must be safely reusable and callable again with
-different plans/handlers without cross-contamination. This is
-verified behaviorally (see Testing strategy, STATE-01/STATE-02), not
-by inspecting `__dict__`.
+same executor instance is reusable for repeated, sequential calls with
+different plans/handlers without cross-contamination. This is verified
+behaviorally (see Testing strategy, STATE-01/STATE-02), not by
+inspecting `__dict__`. This is a **sequential-reuse** guarantee only —
+thread-safety, reentrancy, and concurrent invocation of the same
+instance are separate, untested contracts this ADR does not claim; see
+Q14.
 
 **Q10 — Failure behavior: swallow or propagate?** Propagate, and stop.
 If a handler raises, `SequentialExecutor.execute` does not catch it,
@@ -429,8 +432,10 @@ class SequentialExecutor:
     in order, one at a time, threading prior results forward via
     StepExecutionContext. Behaviorally stateless -- execution state
     from one execute() call never affects another; the same instance
-    is safely reusable across repeated or interleaved calls (see Q9).
-    Does not catch handler exceptions: a raising handler stops the
+    is reusable across repeated calls (see Q9). Thread-safety,
+    reentrancy, and concurrent invocation are separate, untested
+    contracts not claimed here. Does not catch handler exceptions: a
+    raising handler stops the
     plan immediately and propagates the original exception object
     unmodified. Never returns a partial ExecutionResult."""
 
