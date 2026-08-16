@@ -2,7 +2,23 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Accepted after real GitHub Actions post-merge CI confirmed on the
+actual merged `main` SHA — not from PR CI or local checks alone, per
+this project's standing rule that "PR green is not proof." Evidence
+trail:
+
+- PR #12 (initial contract freeze): merged `1e2297a`, post-merge CI
+  run [31969249754](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31969249754),
+  329/329 on 3.10/3.11/3.12.
+- PR #13 (`ExecutionResult` → `StepExecutionResult` rename, found
+  during the 14E pre-implementation audit): merged `75829ec`,
+  post-merge CI run [31969537482](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31969537482),
+  329/329 on 3.10/3.11/3.12.
+- PR #14 (implementation): merged `79b1d84`, post-merge CI run
+  [31971031719](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31971031719),
+  358/358 on 3.10/3.11/3.12, lint clean, on commit `79b1d84`.
 
 ## Context
 
