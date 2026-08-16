@@ -2,7 +2,12 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Confirmed by real GitHub Actions CI on PR #6 (run
+[31940799953](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31940799953)):
+258/258 tests passed on Python 3.10, 3.11, and 3.12; lint green on all
+three. Not accepted from local checks alone, per project convention.
 
 ## Context
 
