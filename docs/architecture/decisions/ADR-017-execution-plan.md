@@ -366,6 +366,36 @@ informal sense.
 the target O(V + E) complexity; a `list.pop(0)`-based FIFO would work
 correctly but is O(n) per pop and must not be used.
 
+**The declaration-order tie-break claim above is precise only for
+nodes ready at the start of planning (in-degree zero before any node
+is processed) — this distinction was found and corrected during the
+13B.5 re-review (finding ADV-04, MINOR) and is stated explicitly here
+rather than left implicit, since testing only the time-zero case could
+otherwise leave a false impression that the same rule governs every
+tie.** Two related but distinct facts hold, both fully deterministic:
+
+1. **Nodes ready at the start** (in-degree zero when the ready queue
+   is first seeded, before any node has been processed) are enqueued
+   in `graph.nodes`' own declaration order — this is the case argued
+   above and verified by direct construction.
+2. **Nodes that become ready later** (in-degree reaches zero only
+   after some predecessor has been processed) are enqueued in the
+   order their enabling `Connection` was encountered while building
+   the adjacency list — i.e., the position of that `Connection` within
+   `graph.connections`, discovered during the single O(E) pass `plan()`
+   makes over `connections` before Kahn's algorithm runs. For example,
+   if `A→B` appears before `A→C` in `graph.connections`, then once `A`
+   is processed, `B` is enqueued before `C` — regardless of whether `B`
+   or `C` appears first in `graph.nodes`.
+
+Both rules are deterministic and reproducible (same graph, same
+`connections` order, same result every time), which is what
+`ExecutionPlan`'s equality/determinism guarantees actually require —
+but they are two different orderings, not one uniform rule, and a
+reader testing only case 1 could wrongly conclude case 2 follows the
+same source. The test matrix below (E11) exercises both cases
+separately, not only the time-zero one.
+
 ### `ExecutionPlan` does not implement `__iter__`/`__len__`/`__getitem__` in this version
 
 Resolves 13B.3 finding ADV-02 (MINOR). `Sequential` (Step 1) supports
@@ -718,20 +748,29 @@ Step 13 design audit:
 - **E10 (disconnected DAGs are supported)**: a graph with two
   unconnected linear chains (`A→B` and `C→D`) plans successfully, with
   both chains' internal orderings respected.
-- **E11 (multiple ready nodes are deterministically ordered)**: a
-  diamond graph (`A→B, A→C, B→D, C→D`, i.e. both `B` and `C` become
-  ready at the same point) plans the same way every time, and in
-  `graph.nodes`' declared order among the tied candidates — a
-  dedicated test constructs the same diamond shape with `B`/`C` added
-  to the graph in the opposite declared order and confirms the tie
-  break follows that order, not id sort or any other implicit rule.
-  **This is the direct regression guard for 13B.3 finding ADV-01**: it
-  exists specifically to fail if a future refactor "simplifies" `plan()`
-  back toward `CompositionGraph._has_cycle()`'s LIFO queue shape,
-  silently reintroducing the bug the 13B.3 adversarial review caught
-  before any implementation existed. The expected order for `A, B, C,
-  D` declared in that order is exactly `A, B, C, D` — proven by direct
-  construction during 13B.3, not merely asserted.
+- **E11 (multiple ready nodes are deterministically ordered)** — split
+  into the two distinct cases identified during 13B.5 (finding ADV-04),
+  since they are governed by different orderings and must not be
+  conflated into one test:
+  - **E11a (time-zero ties, `graph.nodes` order)**: two independent
+    roots both ready from the start (e.g. `F→G`, `E→G`, with `F`
+    declared before `E` in `graph.nodes`) plan with `F` before `E`. A
+    second variant with `E` declared before `F` confirms the tie-break
+    follows declared order, not id sort or any other implicit rule.
+    This is the direct regression guard for 13B.3 finding ADV-01: it
+    exists specifically to fail if a future refactor "simplifies"
+    `plan()` back toward `CompositionGraph._has_cycle()`'s LIFO queue
+    shape. Both cases verified by direct construction during 13B.3/
+    13B.5, not merely asserted.
+  - **E11b (mid-traversal ties, `connections` discovery order)**: a
+    diamond graph `A→B, A→C, B→D, C→D` where `B`/`C` both become ready
+    only after `A` is processed — confirmed to plan as `A, B, C, D`
+    when `A→B` is declared before `A→C` in `graph.connections`, and as
+    `A, C, B, D` when the connection declaration order is reversed
+    (`A→C` before `A→B`), **regardless of `graph.nodes`' own
+    declaration order** — proving mid-traversal ties follow
+    `connections` discovery order specifically, not `graph.nodes`
+    order. This is the regression guard for 13B.5 finding ADV-04.
 - **E12 (empty graph behavior)**: `plan(CompositionGraph(nodes=(),
   connections=()))` returns `ExecutionPlan(steps=())`, no exception.
 - Immutability: `ExecutionStep`/`ExecutionPlan` attribute assignment
