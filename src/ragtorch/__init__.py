@@ -46,9 +46,21 @@ CompositionGraph using Kahn's algorithm with an explicit FIFO ready
 queue. ExecutionPlan contains no runtime objects and does not retain
 the source graph — deriving a plan is a pure, one-way transformation.
 No executor, no ExecutionEngine integration, no parallel/async
-execution yet — see ADR-017. No Block or serialization yet. No LLM,
-embedding, or vector-store integrations live here; those are built on
-top of this foundation in later steps.
+execution yet — see ADR-017. Step 14 adds the executor: Executor/
+StepHandler (Protocols) and SequentialExecutor, which runs an
+ExecutionPlan's steps in order via a caller-supplied StepHandler,
+threading prior results forward through an immutable
+StepExecutionContext snapshot and returning a StepExecutionResult.
+Provider-independent by construction -- the executor never resolves a
+step to a Component itself; that is entirely the handler's
+responsibility. No ExecutionEngine integration, no async/parallel/
+distributed execution, no retries or timeouts yet — see ADR-018.
+StepExecutionContext/StepExecutionResult are deliberately not named
+ExecutionContext/ExecutionResult -- those names are already used by
+unrelated types (run identity/metadata, and the ExecutionEngine's
+Run/Trace/Metrics bundle, respectively). No Block or serialization
+yet. No LLM, embedding, or vector-store integrations live here; those
+are built on top of this foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -68,6 +80,7 @@ from ragtorch.core import (
     ExecutionPlan,
     ExecutionResult,
     ExecutionStep,
+    Executor,
     GraphNode,
     InputPort,
     MetricsCollector,
@@ -83,7 +96,11 @@ from ragtorch.core import (
     Run,
     RunStatus,
     Sequential,
+    SequentialExecutor,
     Span,
+    StepExecutionContext,
+    StepExecutionResult,
+    StepHandler,
     Trace,
     ValidationError,
     check_connection,
@@ -135,6 +152,11 @@ __all__ = [
     "ExecutionPlan",
     "ExecutionStep",
     "plan",
+    "Executor",
+    "SequentialExecutor",
+    "StepHandler",
+    "StepExecutionContext",
+    "StepExecutionResult",
     "ObservabilityLevel",
     "get_logger",
     "log_event",
