@@ -47,6 +47,14 @@ This matrix converts the frozen requirements into verifiable engineering obligat
 | A26 | `inspect()` remains backward compatible after becoming snapshot-backed | ADR-012; `Module.inspect()`'s pre-existing string output (`"Modules: N"`, `"Depth: N"`, `"name (Type)"`) is unchanged | none — existing test passes unmodified | `test_inspect_contains_counts_and_tree` (Step 1, unmodified), `test_inspect_output_unchanged_for_realistic_pipeline` (Step 8) |
 | A27 | Snapshot construction never executes a component | ADR-012; `snapshot()` reads only `name`/`component_type`/`named_children()`, never calls `module(...)` | none — this is a permanent constraint, not a gap | `test_snapshot_does_not_execute_components` (a component whose `__call__`/`forward` raises if invoked still snapshots successfully) |
 | A28 | Snapshot construction never exposes arbitrary instance state | ADR-012; only known, intentional properties are read — never `vars()`/`__dict__` | none — stronger than a redaction filter: the state is structurally unreachable, not merely hidden after being read | `test_snapshot_does_not_expose_arbitrary_instance_state` (a component with `self.api_key`/`self.password` never leaks them) |
+| A29 | Architecture snapshots are structurally validatable | ADR-013; `ragtorch.core.architecture.validate_snapshot()` — a non-empty-rooted-tree contract, `ValidationError` on the first violation, `None` on success | validated at the snapshot boundary only; no `Module.validate()` convenience method yet (deferred until repeatedly needed, mirroring `Module.snapshot()`'s own history) | `tests/unit/core/test_architecture.py` (19 tests), `tests/integration/test_architecture_validation.py` (3 tests) |
+| A30 | Node identifiers are unique within a valid snapshot | ADR-013 Rule 2 | none | `test_duplicate_node_id_is_invalid` |
+| A31 | A valid architecture contains exactly one root | ADR-013 Rule 6 | none | `test_multiple_roots_is_invalid`, `test_cycle_produces_zero_roots_is_invalid` |
+| A32 | Each non-root node has exactly one parent | ADR-013 Rule 5 — proven insufficient to infer from root-count alone via a concrete diamond counter-example (`A→B`, `A→C`, `B→D`, `C→D`: one root, zero duplicate IDs, but `D` has two parents), verified by direct construction before being frozen into the ADR | none | `test_diamond_multiple_parents_is_invalid` |
+| A33 | All nodes are reachable from the root | ADR-013 Rule 7 — proven to catch a disconnected cycle (`A→B` valid + `C→D→C`) that root-counting alone misses, verified by direct construction | none | `test_disconnected_node_is_invalid`, `test_disconnected_cycle_is_invalid` |
+| A34 | A valid architecture is acyclic | ADR-013 — no separate cycle-detection algorithm; proven (not merely asserted) that Rules 2/5/6 catch a connected cycle via zero-roots, and Rule 7 catches a disconnected cycle | none — deliberately not implemented as a redundant separate DFS pass | `test_cycle_produces_zero_roots_is_invalid`, `test_disconnected_cycle_is_invalid` |
+| A35 | Architecture validation is provider-independent | ADR-013; `architecture.py` imports only `ragtorch.core.errors`/`ragtorch.core.inspection` | none | `test_architecture_module_has_no_provider_dependencies` (AST-based, reusing the Step 7/8 pattern) |
+| A36 | Architecture validation does not mutate the snapshot | ADR-013; read-only, no automatic repair/deduplication/reordering | none | `test_validation_does_not_mutate_snapshot` |
 
 ## Step 5 status
 
@@ -122,11 +130,47 @@ and additional renderers (Mermaid/Graphviz) all remain explicit
 non-goals (see ADR-012) — deferred until a real composition/graph
 contract or consumer exists to justify their shape.
 
+## Step 9 status
+
+Architecture snapshot validation (A29-A36) is implemented per ADR-013:
+`ragtorch.core.architecture.validate_snapshot()`, a ten-rule
+non-empty-rooted-tree contract checked in a fixed order (empty →
+duplicate IDs → dangling references → self-containment → multiple
+parents → root count → reachability), `None` on success,
+`ValidationError` (reused, no new exception type) on the first
+violation. `Component`, `Module`, `ExecutionEngine`, `ExecutionContext`,
+`Sequential`, `ports.py`, and `inspection.py` are all unchanged — zero
+lines touched; `architecture.py` is a new, standalone module.
+
+Two Staff-review corrections shaped the final contract before any code
+was written: "exactly one root" alone is insufficient to prove a tree
+(a diamond — `A→B`, `A→C`, `B→D`, `C→D` — has one root and zero
+duplicate IDs but a doubly-parented node), and a disconnected cycle is
+caught by reachability, not root-counting, since neither cycle node has
+zero incoming edges. Both were verified by direct construction before
+being frozen into the ADR, and both now have dedicated regression
+tests. No separate cycle-detection algorithm was implemented — proven,
+not merely assumed, that the existing rules already imply acyclicity
+for a valid tree.
+
+An explicit, named limitation carried forward from the audit: the
+pre-existing `Module` cycle-registration gap (`a.child = b; b.child = a`
+succeeding, then `RecursionError`-ing on traversal) remains unaddressed
+— `validate_snapshot()` operates on the snapshot boundary only and
+cannot protect against a tree `snapshot()` itself couldn't finish
+building. Frozen as an explicit Non-goal (ADR-013), not silently
+patched here.
+
+Benchmarked scaling (1/10/100/1,000-node trees) confirms the O(N+E)
+design empirically: node count growing 10x costs roughly 8-10x time,
+not ~100x — see `evaluation/step9-evaluation.md`.
+
 ## Next priority
 
 1. Add concurrency tests around event identity before moving event delivery to execution-scoped ownership.
-2. Design a `Block`/graph composition layer that uses `is_compatible()` (Ports) and `ArchitectureSnapshot` (Step 8) together to validate an actual architecture before execution.
-3. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
+2. Design a `Block`/graph composition layer that uses `is_compatible()` (Ports), `ArchitectureSnapshot` (Step 8), and `validate_snapshot()` (Step 9) together to validate an actual architecture before execution — the payoff all three exist to enable.
+3. Consider whether the pre-existing `Module` cycle-registration gap (A29's named limitation) is worth a dedicated future ADR.
+4. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
 
 The Component migration is intentionally **not** a rename of `Module`. We
 first proved the contract and compatibility boundary (Step 6) before any
@@ -135,3 +179,6 @@ optional metadata layered beside Component, not a growth of its core
 contract. The architecture snapshot (Step 8) gives Ports and any future
 Block/graph layer a canonical structural representation to build on,
 without prematurely committing to data-flow or serialization semantics.
+Architecture validation (Step 9) gives that representation a fail-fast
+correctness check, independent of execution, before any future
+composition layer needs to reason about it.

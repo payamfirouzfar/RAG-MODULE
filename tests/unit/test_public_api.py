@@ -28,6 +28,7 @@ def test_public_exports_present():
         "ArchitectureChild",
         "ArchitectureSnapshot",
         "snapshot",
+        "validate_snapshot",
         "ExecutionEngine",
         "ExecutionResult",
         "ObservabilityLevel",

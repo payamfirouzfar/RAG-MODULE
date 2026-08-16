@@ -20,8 +20,13 @@ ArchitectureSnapshot: a canonical, immutable description of a Module
 tree (nodes + parent/child structure), built by walking the tree
 exactly once. Module.inspect() now renders text from this snapshot
 internally rather than an independent tree walk, keeping its output
-unchanged. No LLM, embedding, or vector-store integrations live here;
-those are built on top of this foundation in later steps.
+unchanged. Step 9 adds validate_snapshot(), which checks that an
+ArchitectureSnapshot is a well-formed, non-empty rooted tree (unique
+ids, no dangling references, at most one parent per node, exactly one
+root, full reachability) and raises ValidationError with a specific
+message on the first violation found, or returns None. No LLM,
+embedding, or vector-store integrations live here; those are built on
+top of this foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -63,6 +68,7 @@ from ragtorch.core import (
     new_span_id,
     redact,
     snapshot,
+    validate_snapshot,
 )
 
 __version__ = "0.4.0"
@@ -90,6 +96,7 @@ __all__ = [
     "ArchitectureChild",
     "ArchitectureSnapshot",
     "snapshot",
+    "validate_snapshot",
     "ExecutionEngine",
     "ExecutionResult",
     "ObservabilityLevel",
