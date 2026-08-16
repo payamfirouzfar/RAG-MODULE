@@ -1,5 +1,6 @@
 """Core kernel: framework-agnostic abstractions with no vendor dependencies."""
 
+from ragtorch.core.architecture import validate_snapshot
 from ragtorch.core.component import Component
 from ragtorch.core.config import RAGConfig
 from ragtorch.core.context import ExecutionContext, new_run_id
@@ -49,6 +50,7 @@ __all__ = [
     "ArchitectureChild",
     "ArchitectureSnapshot",
     "snapshot",
+    "validate_snapshot",
     "ExecutionEngine",
     "ExecutionResult",
     "ObservabilityLevel",
