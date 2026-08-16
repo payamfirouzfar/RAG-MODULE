@@ -57,25 +57,33 @@ class GraphNode:
 
 
 def _has_cycle(node_ids: tuple[str, ...], connections: tuple[Connection, ...]) -> bool:
-    """DFS-based cycle detection over (source_node_id, target_node_id) pairs."""
+    """Iterative Kahn's-algorithm cycle detection over (source_node_id,
+    target_node_id) pairs.
+
+    Deliberately iterative, not recursive DFS: a recursive
+    implementation hits Python's default recursion limit on a long
+    linear chain (a real failure caught by benchmarking a 1,000-node
+    chain, not assumed safe from the algorithm's correctness alone).
+    A graph is acyclic if and only if repeatedly removing all
+    zero-in-degree nodes eventually removes every node.
+    """
     edges: dict[str, list[str]] = {node_id: [] for node_id in node_ids}
+    in_degree: dict[str, int] = dict.fromkeys(node_ids, 0)
     for connection in connections:
         edges[connection.source_node_id].append(connection.target_node_id)
+        in_degree[connection.target_node_id] += 1
 
-    unvisited, in_progress, done = 0, 1, 2
-    color = dict.fromkeys(node_ids, unvisited)
+    queue = [node_id for node_id in node_ids if in_degree[node_id] == 0]
+    visited_count = 0
+    while queue:
+        current = queue.pop()
+        visited_count += 1
+        for neighbor in edges[current]:
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
 
-    def visit(node_id: str) -> bool:
-        color[node_id] = in_progress
-        for neighbor in edges[node_id]:
-            if color[neighbor] == in_progress:
-                return True
-            if color[neighbor] == unvisited and visit(neighbor):
-                return True
-        color[node_id] = done
-        return False
-
-    return any(color[node_id] == unvisited and visit(node_id) for node_id in node_ids)
+    return visited_count != len(node_ids)
 
 
 @dataclass(frozen=True)

@@ -227,9 +227,16 @@ pattern from ADR-013):
    limit is itself the design choice; recorded here so the canonical
    list is complete, not because there is code enforcing it.
 8. **The graph is acyclic.** No directed cycle exists among
-   `connections`. Detected via a standard DFS/Kahn-style traversal over
-   `(source_node_id, target_node_id)` pairs — no new dependency, no
-   `networkx`.
+   `connections`. Detected via an **iterative** Kahn's-algorithm
+   topological sort over `(source_node_id, target_node_id)` pairs — no
+   new dependency, no `networkx`. Deliberately iterative, not recursive
+   DFS: a first implementation used recursive DFS and was caught by
+   this step's own benchmark hitting `RecursionError` on a 1,000-node
+   linear chain (Python's default recursion limit is 1,000) — fixed
+   before this ADR's implementation was committed, and recorded here
+   because it is the concrete reason this project benchmarks at
+   multiple scales rather than trusting correctness at a single small
+   size.
 9. **Removing a node cannot silently leave dangling connections.**
    Enforced by `remove_node()` raising if any existing `Connection`
    still references the node being removed — not a `__post_init__`
@@ -413,7 +420,7 @@ Explicitly deferred, not part of this decision:
   whether it is actually needed.
 - **Use `networkx` or another graph library for cycle detection.**
   Rejected: zero new dependencies is an established, hard constraint
-  (R1/R11); a DFS/Kahn-style traversal over at most a few hundred
+  (R1/R11); an iterative Kahn's-algorithm traversal over at most a few hundred
   nodes for any realistic RAG composition needs no library.
 
 ## Security
