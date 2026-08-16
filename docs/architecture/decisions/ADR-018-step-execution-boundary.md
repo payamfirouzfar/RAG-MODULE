@@ -134,7 +134,7 @@ or a `MappingProxyType` wrapping the *same* live dict across steps —
 both let a handler observe (or, for the raw dict, mutate) state outside
 the snapshot taken at its own invocation time — see Q9/ADV-05..08.
 
-**Q5 — What shape holds the final output?** `ExecutionResult`, a
+**Q5 — What shape holds the final output?** `StepExecutionResult`, a
 frozen dataclass wrapping an immutable `values: Mapping[str, object]`
 keyed by `node_id`, built once after every step completes successfully
 — never returned incrementally, never mutable after construction, and
@@ -142,7 +142,7 @@ keyed by `node_id`, built once after every step completes successfully
 
 **Q6 — Does this ADR run more than one step?** Yes — unlike a
 `StepExecutor`-shaped single-invocation boundary, this ADR's contract
-*is* the plan runner: `Executor.execute(plan, handler) -> ExecutionResult`
+*is* the plan runner: `Executor.execute(plan, handler) -> StepExecutionResult`
 walks every step in `plan.steps` in order and returns the aggregated
 result. This intentionally supersedes an earlier single-step-only
 draft of this ADR (see "Revision note" below).
@@ -151,19 +151,19 @@ draft of this ADR (see "Revision note" below).
 adversarial review**: an earlier draft claimed a future
 `AsyncExecutor` "can satisfy the same `Executor` `Protocol`." That
 claim is false and is retracted — `async def execute(...)` returns a
-`Coroutine[..., ExecutionResult]`, not an `ExecutionResult`, so an
+`Coroutine[..., StepExecutionResult]`, not an `StepExecutionResult`, so an
 async implementation cannot structurally satisfy `Executor` as defined
 here; Python's type system does not unify sync and async callables
 under one `Protocol`. `Executor` in this ADR is therefore explicitly
 the **synchronous** execution contract only. A future async use case
 gets its own, separately-named protocol (e.g. `AsyncExecutor` with
-`async def execute(...) -> ExecutionResult`) — a distinct contract,
+`async def execute(...) -> StepExecutionResult`) — a distinct contract,
 not a variant satisfying this one. No `async`/`Awaitable` is
 introduced now, since no consumer of this boundary requires it yet.
 
 **Q8 — Does the executor know about providers?** No. `Executor`,
 `SequentialExecutor`, `StepHandler`, `StepExecutionContext`, and
-`ExecutionResult` mention no provider, model, or vendor SDK anywhere
+`StepExecutionResult` mention no provider, model, or vendor SDK anywhere
 in their contracts — the handler is the only place provider-specific
 code can live, and it lives entirely outside this module, supplied by
 the caller.
@@ -190,7 +190,7 @@ Q14.
 **Q10 — Failure behavior: swallow or propagate?** Propagate, and stop.
 If a handler raises, `SequentialExecutor.execute` does not catch it,
 does not continue to downstream steps, and does not return a partial
-`ExecutionResult` — the exception propagates to the executor's caller
+`StepExecutionResult` — the exception propagates to the executor's caller
 unmodified. This matches every existing execution-adjacent boundary in
 this codebase (`Module.__call__`, `ExecutionEngine.execute`), which
 re-raise/propagate rather than return a sentinel or a
@@ -230,7 +230,7 @@ concurrent executor, but `Executor` as defined here is a strictly
 synchronous, single-threaded contract (see Q7) — concurrency is future,
 separate work, not something this `Protocol` shape already supports.
 
-**Q15 — Serialization?** Not implemented. `ExecutionResult` is a plain
+**Q15 — Serialization?** Not implemented. `StepExecutionResult` is a plain
 frozen dataclass over a `Mapping`; nothing about this ADR requires it
 to be serializable, and nothing prevents a caller from serializing
 `result.values` themselves if its contents happen to be serializable.
@@ -247,10 +247,10 @@ sandboxing.
 
 **Q18 — API stability: what is the smallest contract confident enough
 to freeze now?** `Executor` (`Protocol`, one method:
-`execute(plan, handler) -> ExecutionResult`, synchronous only — see
+`execute(plan, handler) -> StepExecutionResult`, synchronous only — see
 Q7), `StepHandler` (`Protocol`, one method: `__call__(step, context) ->
 object`), `StepExecutionContext` (frozen, `results: Mapping[str,
-object]`), `ExecutionResult` (frozen, `values: Mapping[str, object]`),
+object]`), `StepExecutionResult` (frozen, `values: Mapping[str, object]`),
 and `SequentialExecutor` as the sole concrete `Executor`
 implementation. No scheduler, retry policy, timeout policy, provider
 registry, or distributed-execution concept is exposed.
@@ -322,10 +322,10 @@ to where the fix now lives.
    future ADR.
 
 5. **MAJOR — no explicit partial-result / duplicate-`node_id` policy.**
-   Two related gaps: nothing stated that `ExecutionResult` is only
+   Two related gaps: nothing stated that `StepExecutionResult` is only
    ever produced after full, successful completion (an easy invariant
    to accidentally break later by adding
-   `except Exception: return ExecutionResult(...)`); and nothing
+   `except Exception: return StepExecutionResult(...)`); and nothing
    stated the executor's reliance on `ExecutionPlan.steps` containing
    each `node_id` at most once. **Fix**: both are now explicit — see
    "Partial-result policy" and "Node-id uniqueness invariant" below,
@@ -351,9 +351,35 @@ correction to wording, a signature change, or an explicit-invariant
 addition — not a rejection of the overall design — and none introduces
 a new open question the fixes below don't already close.
 
+## Post-merge finding: `ExecutionResult` naming collision (14E pre-implementation audit)
+
+After PR #12 merged this ADR's contract onto `main`, the mandatory
+fresh repository audit immediately preceding implementation (14E step
+1) found an eighth naming collision that both the 14A and 14B passes
+missed: `ragtorch.core.engine.ExecutionResult` **already exists** (a
+`Run`/`Trace`/`MetricsCollector` bundle, ADR-006) and is already
+exported bare as `ExecutionResult` in both `ragtorch.core.__all__` and
+top-level `ragtorch.__all__`, pinned by
+`tests/unit/test_public_api.py`'s export-parity test. This ADR's
+results-mapping type used the same bare name — exactly the class of
+problem `StepExecutionContext`'s renaming was meant to prevent, which
+the review process failed to catch for the second type.
+
+**Fix, confirmed with the project owner**: this ADR's results type is
+renamed `StepExecutionResult` throughout, mirroring
+`StepExecutionContext`'s precedent exactly, so both new types are
+named for the boundary they belong to and neither collides with an
+existing exported name. All occurrences of `ExecutionResult` in this
+document (Decision, Testing strategy, Consequences, etc.) refer to
+`StepExecutionResult` as of this fix — `ragtorch.core.engine.ExecutionResult`
+is unaffected and unchanged. This is recorded here, not silently
+edited in, per this project's standing rule that a correction found
+after a document was already merged and treated as baseline gets its
+own visible entry, not a quiet rewrite.
+
 ## Decision
 
-### Naming and location: `Executor`, `SequentialExecutor`, `StepExecutionContext`, `src/ragtorch/core/execution.py`
+### Naming and location: `Executor`, `SequentialExecutor`, `StepExecutionContext`, `StepExecutionResult`, `src/ragtorch/core/execution.py`
 
 A new module, not an addition to `execution_plan.py` (a different
 concern: deriving an order vs. running one) or `engine.py` (a
@@ -362,11 +388,17 @@ iteration). The results-mapping type is named `StepExecutionContext`,
 **not** `ExecutionContext` — see 14B finding 1 — to avoid any
 ambiguity with `ragtorch.core.context.ExecutionContext` (run
 identity/metadata, ADR-002), an unrelated type at a different layer.
-The naming is deliberately self-documenting:
+The final-output type is named `StepExecutionResult`, **not**
+`ExecutionResult` — see "Post-merge finding" above — to avoid the same
+ambiguity with `ragtorch.core.engine.ExecutionResult` (a
+`Run`/`Trace`/`MetricsCollector` bundle, ADR-006), also unrelated and
+at a different layer. Both names are deliberately self-documenting:
 
 ```text
-ExecutionContext       (ragtorch.core.context)   = run identity / metadata
+ExecutionContext       (ragtorch.core.context) = run identity / metadata
+ExecutionResult         (ragtorch.core.engine)  = Run/Trace/Metrics bundle from one Module.execute() call
 StepExecutionContext   (ragtorch.core.execution) = results available to a planned step
+StepExecutionResult    (ragtorch.core.execution) = every step's output from one plan execute() call
 ```
 
 ### Public contract
@@ -396,7 +428,7 @@ class StepExecutionContext:
 
 
 @dataclass(frozen=True)
-class ExecutionResult:
+class StepExecutionResult:
     """Every step's output from one execute() call, keyed by node_id.
     Only ever constructed after every step in the plan has completed
     successfully -- see "Partial-result policy". The mapping is
@@ -405,7 +437,7 @@ class ExecutionResult:
     values: Mapping[str, object]
 
     @classmethod
-    def from_values(cls, values: Mapping[str, object]) -> "ExecutionResult":
+    def from_values(cls, values: Mapping[str, object]) -> "StepExecutionResult":
         return cls(values=MappingProxyType(dict(values)))
 
 
@@ -424,7 +456,7 @@ class Executor(Protocol):
     Synchronous only -- see Q7; an async variant is a separate,
     differently-named future contract, not a subtype of this one."""
 
-    def execute(self, plan: ExecutionPlan, handler: StepHandler) -> ExecutionResult: ...
+    def execute(self, plan: ExecutionPlan, handler: StepHandler) -> StepExecutionResult: ...
 
 
 class SequentialExecutor:
@@ -437,14 +469,14 @@ class SequentialExecutor:
     contracts not claimed here. Does not catch handler exceptions: a
     raising handler stops the
     plan immediately and propagates the original exception object
-    unmodified. Never returns a partial ExecutionResult."""
+    unmodified. Never returns a partial StepExecutionResult."""
 
-    def execute(self, plan: ExecutionPlan, handler: StepHandler) -> ExecutionResult:
+    def execute(self, plan: ExecutionPlan, handler: StepHandler) -> StepExecutionResult:
         results: dict[str, object] = {}
         for step in plan.steps:
             context = StepExecutionContext.from_results(results)
             results[step.node_id] = handler(step, context)
-        return ExecutionResult.from_values(results)
+        return StepExecutionResult.from_values(results)
 ```
 
 `Executor` and `StepHandler` are `Protocol`s, not concrete classes, so
@@ -476,14 +508,14 @@ invariant rather than defensively re-checking it at runtime.
 
 ### Partial-result policy
 
-`ExecutionResult` is produced **only** after every step in the plan
+`StepExecutionResult` is produced **only** after every step in the plan
 has completed successfully. There is no partial-result return
-contract: if step *k* of *n* raises, no `ExecutionResult` is
+contract: if step *k* of *n* raises, no `StepExecutionResult` is
 constructed or returned — not for the *k-1* steps that already
 succeeded, not in any other form. This is stated as a permanent
 contract, not incidental current behavior, specifically so a future
 change does not casually introduce
-`except Exception: return ExecutionResult(partial_values)` and
+`except Exception: return StepExecutionResult(partial_values)` and
 silently change failure semantics that callers may already depend on
 (see Q10, FAIL-04).
 
@@ -518,7 +550,7 @@ for this version, not an oversight (14B finding 4):
 
 ### Shallow immutability
 
-`StepExecutionContext.results` and `ExecutionResult.values` are
+`StepExecutionContext.results` and `StepExecutionResult.values` are
 immutable **mappings**: no key can be added, removed, or reassigned
 through the exposed object (`MappingProxyType` enforces this,
 raising `TypeError` on attempted mutation). This says nothing about
@@ -580,7 +612,7 @@ Explicitly deferred, not part of this decision:
   type.** Rejected during 14B review — collides with
   `ragtorch.core.context.ExecutionContext` — see finding 1.
 - **Return results incrementally (e.g. a generator/iterator of
-  per-step results) instead of one `ExecutionResult` at the end.**
+  per-step results) instead of one `StepExecutionResult` at the end.**
   Rejected as a needless expansion of the contract's shape before any
   consumer has demonstrated a need for streaming results; `plan.steps`
   is already available to a caller that wants to observe the handler's
@@ -621,15 +653,20 @@ construction cost" for why one is not added in this version).
 No changes to `Component`, `Module`, `Sequential`, `ExecutionEngine`,
 `ArchitectureSnapshot`, `CompositionGraph`, `GraphNode`, `Connection`,
 `ExecutionPlan`, `ExecutionStep`, or `plan()` themselves.
-`Executor`, `StepHandler`, `StepExecutionContext`, `ExecutionResult`,
+`Executor`, `StepHandler`, `StepExecutionContext`, `StepExecutionResult`,
 and `SequentialExecutor` are a pure addition in a new module. Naming
 `StepExecutionContext` (not `ExecutionContext`) avoids any collision
-with the existing, unrelated
-`ragtorch.core.context.ExecutionContext` (run identity/metadata,
-ADR-002) — see "Naming" above and 14B finding 1. The exact public
-export path/`__all__` membership for the new types is finalized during
-implementation (14E) and recorded in the requirements matrix evidence
-for A66, not left implicit.
+with the existing, unrelated `ragtorch.core.context.ExecutionContext`
+(run identity/metadata, ADR-002) — see "Naming" above and 14B finding
+1. Naming `StepExecutionResult` (not `ExecutionResult`) avoids the
+same collision with the existing, unrelated
+`ragtorch.core.engine.ExecutionResult` (`Run`/`Trace`/`MetricsCollector`
+bundle, ADR-006), already exported bare in both
+`ragtorch.core.__all__` and `ragtorch.__all__` and pinned by
+`tests/unit/test_public_api.py` — see "Post-merge finding" above. The
+exact public export path/`__all__` membership for the new types is
+finalized during implementation (14E) and recorded in the requirements
+matrix evidence for A66, not left implicit.
 
 ## Testing strategy
 
@@ -646,7 +683,7 @@ for A66, not left implicit.
   mutates a returned list and confirms no error is raised, distinct
   from CTX-03's mapping-level check.
 - **EXEC-01** Empty plan (`ExecutionPlan(steps=())`) returns
-  `ExecutionResult(values={})` without calling `handler`.
+  `StepExecutionResult(values={})` without calling `handler`.
 - **EXEC-02** One step: handler is called once with that step's
   `ExecutionStep`, and `result.values` contains exactly one entry.
 - **EXEC-03** Multiple steps: handler is called once per step.
@@ -680,7 +717,7 @@ for A66, not left implicit.
 - **FAIL-03** Downstream steps do not execute after a failure
   (verified via a recording fake handler that would record a call it
   must never actually receive for steps after the failing one).
-- **FAIL-04** No partial `ExecutionResult` is returned or accessible
+- **FAIL-04** No partial `StepExecutionResult` is returned or accessible
   after a mid-plan failure — the failure propagates as an exception,
   there is no result object to inspect at all (see "Partial-result
   policy").
@@ -738,7 +775,7 @@ separate ADR — not silently fixed by scope-creeping this one.
   `Component`, `CompositionGraph`, or any provider, by construction —
   enforced by ADV-08, not merely by convention.
 - The executor's behavioral statelessness and immutable
-  `StepExecutionContext`/`ExecutionResult` are deliberately chosen now
+  `StepExecutionContext`/`StepExecutionResult` are deliberately chosen now
   so a future concurrent executor does not have to retrofit these
   properties under a compatibility constraint.
 - Failure semantics are deliberately *not* unified with
