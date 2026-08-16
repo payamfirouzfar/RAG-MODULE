@@ -2,7 +2,19 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Verified via GitHub Actions (PR #3, run 31920851687): 202/202 tests
+passing on Python 3.10, 3.11, and 3.12, on the first CI run after
+pushing (unlike Step 7's ADR-011, which needed a fix-and-repush cycle
+after CI caught a real cross-version bug). A separate, real bug in this
+step's implementation — an incorrect child-path "optimization" that
+broke root-level node IDs — was caught before ever being pushed, by
+manually verifying `snapshot()`'s output against `named_modules()`
+directly rather than relying on the existing test suite alone (which
+still passed 202/202 with that bug present). See
+`evaluation/step8-evaluation.md` for the full account of both the
+performance tradeoff and the caught bug.
 
 ## Context
 
