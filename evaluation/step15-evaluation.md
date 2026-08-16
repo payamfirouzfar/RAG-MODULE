@@ -277,21 +277,45 @@ files' own test suites, all passing unmodified.
 
 ## Decision
 
-**Step 15 implementation Definition of Done: met locally** (Python
-3.10 and 3.12 both verified, 382/382, lint/format/mypy clean,
-`engine.py` 100% coverage). Requirements matrix A67's evidence is
-updated to reflect this implementation only after real CI confirms it
-— per the project's standing rule that an ADR decision is not proof
-until implementation/tests/CI independently confirm it. **ADR-019's
-status remains `Proposed`** — its contract was frozen and
-post-merge-CI-confirmed via PR #16, but per Step 13/14's precedent, an
-ADR is flipped to `Accepted` only after its *implementation* is
-independently post-merge-CI-confirmed on `main`, not merely its
-docs-only contract. That flip happens in the completion PR, after this
-implementation PR merges and post-merge CI confirms it — not now.
+**Step 15 implementation Definition of Done: met and confirmed by
+real CI.** Local verification (382/382 on Python 3.10 and 3.12,
+lint/format/mypy clean) was independently confirmed by GitHub Actions
+PR CI (run `31975551707`, 382/382 on 3.10/3.11/3.12) and, critically,
+by **post-merge CI on the actual merged `main` SHA** (run
+`31975659964`, commit `f9e57dc`, 382/382 on 3.10/3.11/3.12) — not
+claimed from local checks or PR-green alone, per the project's
+standing rule that "PR green is not proof." ADR-019's status is
+flipped to Accepted only on the basis of this post-merge evidence (see
+ADR-019 "Status").
 
 ## Completion record
 
-Pending PR creation, PR CI, merge, and post-merge CI on `main` — this
-section is completed only after all of those are independently
-confirmed, matching Steps 13/14's exact discipline.
+| Field | Value |
+| --- | --- |
+| Step | 15 — Plan Execution Runtime Boundary |
+| Architectural decision | ADR-019 |
+| Requirement | A67 |
+| Implementation | `ExecutionEngine.execute_plan` — `src/ragtorch/core/engine.py` |
+| Tests | 382 (358 pre-existing, unmodified + 21 unit + 3 integration) |
+| CI | Python 3.10 / 3.11 / 3.12 — all pass |
+| Benchmark | Completed (`benchmarks/step15_plan_execution_runtime.py`, 10/100/1,000 steps, BASIC/DEBUG, isolating engine overhead from ADR-018's already-benchmarked snapshot-copying cost) |
+| Evaluation | Completed (this document) |
+| PR #16 merge SHA (ADR-019 initial contract + 15D corrections) | `3fb8ce9c95efa753320e71d249c7b5d45753e6c6` |
+| PR #17 merge SHA (implementation) | `f9e57dcaf0d2675f21261efcfb606c67a8b9e293` |
+| Post-merge `main` CI run (final) | [31975659964](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31975659964) — 382/382 on 3.10/3.11/3.12, lint clean, on commit `f9e57dc` |
+| Status | **COMPLETE** |
+
+Marked COMPLETE only after post-merge `main` CI passed on the final
+merge commit — not from PR CI, not from local checks. Two review
+passes found and fixed 9 real issues before this record was written:
+15D's adversarial review (2 BLOCKER, 3 MAJOR, 2 MINOR findings against
+the ADR, before any code existed) and the 15A/15B repository audit
+that grounded the design in actual code rather than assumption
+(finding, among other things, that `execute(module, ...)` never wraps
+exceptions itself and that ADR-007 already made per-child spans a
+tested non-goal — both precedents this implementation deliberately
+mirrors). A final Staff Engineer re-review before merge confirmed
+zero changes to any protected file
+(`execution.py`/`execution_plan.py`/`module.py`/`sequential.py`/
+`composition.py`/`component.py`/`context.py`) and zero new public API
+surface — consistent with ADR-019's additive-only scope.
