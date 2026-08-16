@@ -35,7 +35,13 @@ type persisting a single, directed, validated data-flow edge
 delegating compatibility checking to check_connection() rather than
 duplicating it. Fan-out/fan-in cardinality, cycles, a graph/Block
 aggregate, execution order, and serialization remain explicit future
-work — see ADR-015. No LLM, embedding, or vector-store integrations
+work — see ADR-015. Step 12 adds CompositionGraph/GraphNode: an
+immutable, validated collection of nodes and Connections, enforcing
+unique node ids, referential integrity, no duplicate connections,
+fan-in <= 1 per input port (fan-out unrestricted), and acyclicity.
+GraphNode.id is graph-local identity, independent of
+ArchitectureNode.id. No Block, execution planning, or serialization
+yet — see ADR-016. No LLM, embedding, or vector-store integrations
 live here; those are built on top of this foundation in later steps.
 """
 
@@ -44,6 +50,7 @@ from ragtorch.core import (
     ArchitectureNode,
     ArchitectureSnapshot,
     Component,
+    CompositionGraph,
     ConfigurationError,
     Connection,
     Event,
@@ -53,6 +60,7 @@ from ragtorch.core import (
     ExecutionEngine,
     ExecutionError,
     ExecutionResult,
+    GraphNode,
     InputPort,
     MetricsCollector,
     MetricSummary,
@@ -88,6 +96,8 @@ __version__ = "0.4.0"
 __all__ = [
     "__version__",
     "Component",
+    "CompositionGraph",
+    "GraphNode",
     "Connection",
     "Module",
     "RAGModule",
