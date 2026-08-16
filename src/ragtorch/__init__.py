@@ -40,9 +40,15 @@ immutable, validated collection of nodes and Connections, enforcing
 unique node ids, referential integrity, no duplicate connections,
 fan-in <= 1 per input port (fan-out unrestricted), and acyclicity.
 GraphNode.id is graph-local identity, independent of
-ArchitectureNode.id. No Block, execution planning, or serialization
-yet — see ADR-016. No LLM, embedding, or vector-store integrations
-live here; those are built on top of this foundation in later steps.
+ArchitectureNode.id. Step 13 adds ExecutionPlan/ExecutionStep/plan():
+plan(graph) derives a deterministic topological ordering from a valid
+CompositionGraph using Kahn's algorithm with an explicit FIFO ready
+queue. ExecutionPlan contains no runtime objects and does not retain
+the source graph — deriving a plan is a pure, one-way transformation.
+No executor, no ExecutionEngine integration, no parallel/async
+execution yet — see ADR-017. No Block or serialization yet. No LLM,
+embedding, or vector-store integrations live here; those are built on
+top of this foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -59,7 +65,9 @@ from ragtorch.core import (
     ExecutionContext,
     ExecutionEngine,
     ExecutionError,
+    ExecutionPlan,
     ExecutionResult,
+    ExecutionStep,
     GraphNode,
     InputPort,
     MetricsCollector,
@@ -86,6 +94,7 @@ from ragtorch.core import (
     log_event,
     new_run_id,
     new_span_id,
+    plan,
     redact,
     snapshot,
     validate_snapshot,
@@ -123,6 +132,9 @@ __all__ = [
     "validate_snapshot",
     "ExecutionEngine",
     "ExecutionResult",
+    "ExecutionPlan",
+    "ExecutionStep",
+    "plan",
     "ObservabilityLevel",
     "get_logger",
     "log_event",
