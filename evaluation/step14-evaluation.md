@@ -311,18 +311,44 @@ Compatibility.
 
 ## Decision
 
-**Step 14 implementation Definition of Done: met locally** (Python
-3.12 verified; 3.10/3.11 verification pending CI, matching the
-project's standing discipline of not claiming CI-level confirmation
-from local checks alone). Requirements matrix A66's evidence is
-updated to reflect this implementation only after real CI confirms it
-— per the project's standing rule that an ADR decision is not proof
-until implementation/tests/CI independently confirm it.
+**Step 14 implementation Definition of Done: met and confirmed by
+real CI.** Local verification (358/358 on Python 3.10 and 3.12,
+lint/format/mypy clean) was independently confirmed by GitHub Actions
+PR CI (run `31970963621`, 358/358 on 3.10/3.11/3.12) and, critically,
+by **post-merge CI on the actual merged `main` SHA** (run
+`31971031719`, commit `79b1d84`, 358/358 on 3.10/3.11/3.12) — not
+claimed from local checks or PR-green alone, per the project's
+standing rule that "PR green is not proof." ADR-018's status is
+flipped to Accepted only on the basis of this post-merge evidence (see
+ADR-018 "Status").
 
 ## Completion record
 
-Pending PR creation, PR CI, merge, and post-merge CI on `main` — this
-section is completed only after all of those are independently
-confirmed, matching Step 13's exact discipline (see
-`evaluation/step13-evaluation.md` "Completion record" for the
-template this will follow).
+| Field | Value |
+| --- | --- |
+| Step | 14 — Step Execution Boundary |
+| Architectural decision | ADR-018 |
+| Requirement | A66 |
+| Implementation | `Executor` / `StepHandler` (`Protocol`s) / `SequentialExecutor` / `StepExecutionContext` / `StepExecutionResult` — `src/ragtorch/core/execution.py` |
+| Tests | 358 (329 pre-existing, unmodified + 27 unit + 2 integration) |
+| CI | Python 3.10 / 3.11 / 3.12 — all pass |
+| Benchmark | Completed (`benchmarks/step14_execution_boundary.py`, 10/100/1,000/10,000/100,000 steps; two independent local runs recorded) |
+| Evaluation | Completed (this document) |
+| PR #12 merge SHA (ADR-018 initial contract freeze) | `1e2297a41242f94febeb796707de313259472ba0` |
+| PR #13 merge SHA (`ExecutionResult` → `StepExecutionResult` rename) | `75829ec67e813ce7e478b9b97e4208c0efe5450b` |
+| PR #14 merge SHA (implementation) | `79b1d846a7bc4f1ae1b87cc3f5d808ea415ac1f0` |
+| Post-merge `main` CI run (final) | [31971031719](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31971031719) — 358/358 on 3.10/3.11/3.12, lint clean, on commit `79b1d84` |
+| Status | **COMPLETE** |
+
+Marked COMPLETE only after post-merge `main` CI passed on the final
+merge commit — not from PR CI, not from local checks. Two adversarial/
+audit passes found and fixed three real design problems before this
+record was written: the 14B adversarial review (7 findings, including
+a naming collision, a handler-signature gap, and a retracted false
+async-compatibility claim) and the 14E pre-implementation fresh audit
+(an eighth, previously-missed naming collision,
+`ExecutionResult`/`StepExecutionResult`). A 14M final pre-PR gate
+additionally added integration test coverage and corrected an
+evaluation claim that overstated what the benchmark evidence
+supported — all before the implementation PR was opened, consistent
+with the discipline established in Step 13.
