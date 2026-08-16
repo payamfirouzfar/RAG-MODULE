@@ -251,6 +251,31 @@ trail), requirements matrix (A65, evidence updated). No touch to
 
 **Step 13 implementation Definition of Done: met locally** (Python
 3.10 and 3.12 both verified). Per the project's standing discipline,
-this evidence is submitted for real CI confirmation before the
-requirements matrix or any status is claimed as final — not from local
-checks alone.
+this evidence was submitted for real CI confirmation before the
+requirements matrix or any status was claimed as final — not from
+local checks alone.
+
+## Completion record (post-merge, Step 13D)
+
+| Field | Value |
+| --- | --- |
+| Step | 13 — Execution Plan |
+| Architectural decision | ADR-017 |
+| Requirement | A65 |
+| Implementation | `ExecutionStep` / `ExecutionPlan` / `plan()` — `src/ragtorch/core/execution_plan.py` |
+| Tests | 329 (296 pre-existing, unmodified + 33 new) |
+| CI | Python 3.10 / 3.11 / 3.12 — all pass |
+| Benchmark | Completed (`benchmarks/step13_execution_plan.py`, 10/100/1,000/10,000 nodes, 3 shapes) |
+| Evaluation | Completed (this document) |
+| PR #8 merge SHA | `27c76899a8061b8255081d064d5eae812b6d3aaf` |
+| PR #9 merge SHA | `3e12aad4b685bdb6e3bc62527173a22e44ee5beb` |
+| PR #10 merge SHA (ADR-017 status correction) | `0c3756ae488d4f3d2892c87a01107ece2ffaf9d9` |
+| Post-merge `main` CI run (final) | [31959433145](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31959433145) — 329/329 on 3.10/3.11/3.12, lint clean, on commit `0c3756a` |
+| Status | **COMPLETE** |
+
+Marked COMPLETE only after post-merge `main` CI passed on the final
+merge commit — not from PR CI, not from local checks. The Phase 8
+final repository audit found one real gap before this record was
+written (ADR-017's status line was never flipped to `Accepted` despite
+CI being green) and corrected it via PR #10, itself independently
+CI-verified before merge.
