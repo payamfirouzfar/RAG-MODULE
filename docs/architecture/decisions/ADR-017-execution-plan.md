@@ -4,6 +4,17 @@
 
 Proposed
 
+**Adversarial review history**: 13B.3 (first pass) returned BLOCK —
+one BLOCKER (ADV-01: the ready-queue discipline was underspecified and
+would silently produce the wrong tie-break if implemented by copying
+`CompositionGraph._has_cycle()`'s LIFO shape) and two MINOR findings
+(ADV-02: `ExecutionPlan` iteration protocol left undecided; ADV-03:
+export convention left unstated). All three are corrected in this
+revision — see "Ordering algorithm," "`ExecutionPlan` does not
+implement `__iter__`/`__len__`/`__getitem__`," and "Public export"
+below. A second adversarial pass (13B.5) is required before this ADR
+is implementation-ready.
+
 ## Context
 
 After Step 12, `CompositionGraph` (ADR-016) can answer "is this
@@ -211,6 +222,19 @@ deliberate, separate decision at that time, not implied here.
 
 ## Decision
 
+### Public export: `ExecutionPlan`, `ExecutionStep`, and `plan` follow the established 100%-parity convention
+
+Resolves 13B.3 finding ADV-03 (MINOR). Every structural primitive
+since Step 7 (`InputPort`, `OutputPort`, `Connection`,
+`CompositionGraph`, `GraphNode`, etc.) is exported from both
+`ragtorch.core.__all__` and top-level `ragtorch.__all__`, with 100%
+parity between the two enforced by `tests/unit/test_public_api.py`.
+`ExecutionPlan`, `ExecutionStep`, and `plan` follow this same,
+established convention — no deviation, no narrower "internal-only"
+export. This was not previously stated explicitly in this ADR and is
+recorded here so implementation does not have to guess it from
+silence.
+
 ### Naming and location: `ExecutionPlan`/`ExecutionStep`, `src/ragtorch/core/execution_plan.py`
 
 A new module, not an addition to `composition.py` or `engine.py`: this
@@ -260,6 +284,13 @@ class ExecutionPlan:
 def plan(graph: CompositionGraph) -> ExecutionPlan:
     """Derive a deterministic ExecutionPlan from a valid CompositionGraph.
 
+    Uses Kahn's algorithm with an explicit collections.deque FIFO ready
+    queue (popleft()/append(), both O(1) amortized) -- not a list
+    popped from the end, and not CompositionGraph._has_cycle()'s LIFO
+    shape (see "Ordering algorithm" below for why the two functions'
+    queue disciplines are deliberately different). Ready nodes are
+    seeded and re-enqueued in graph.nodes' own declaration order.
+
     Does not validate graph -- CompositionGraph.__post_init__ (ADR-016)
     already guarantees acyclicity, referential integrity, and no
     duplicate connections; plan() trusts that guarantee rather than
@@ -290,19 +321,67 @@ following the same pattern — `snapshot()`, `is_compatible()`,
 name, not a `create_`/`build_`-prefixed one). `plan()` matches that
 established naming convention.
 
-### Ordering algorithm: deterministic Kahn's algorithm, tie-broken by graph declaration order
+### Ordering algorithm: deterministic Kahn's algorithm with a FIFO ready queue, tie-broken by graph declaration order
 
-Resolves Q5/Q6 above. Computed via the same iterative Kahn's-algorithm shape `CompositionGraph`
-already uses for cycle detection (ADR-016) — not a new algorithm
-family, and not `networkx`. The queue of "ready" nodes (in-degree zero)
-is processed in **graph node declaration order** whenever more than one
-node is ready simultaneously: `graph.nodes` is an ordered tuple with a
-guaranteed-deterministic iteration order (ADR-016's own determinism
-invariant), so `plan()` reuses that existing ordering as its
-tie-breaker rather than inventing a second ordering concept (e.g.
-lexicographic by `node_id`). Two independently-constructed but
-value-equal `CompositionGraph`s therefore always produce value-equal
+Resolves Q5/Q6 above, **corrected during the 13B.3 adversarial review**
+(finding ADV-01, BLOCKER — see below) after the first draft of this
+section understated the algorithm and was shown by direct construction
+to not actually deliver the tie-break it claimed.
+
+`plan()` uses Kahn's topological-ordering algorithm with an explicit
+**FIFO** ready queue (`collections.deque`, `popleft()`), not `list`/
+`pop()`. Ready nodes (in-degree zero) are seeded into the queue, and
+subsequently enqueued as their in-degree reaches zero, **in the
+declaration order of `graph.nodes`**: `graph.nodes` is an ordered
+tuple with a guaranteed-deterministic iteration order (ADR-016's own
+determinism invariant), so `plan()` reuses that existing ordering as
+its tie-breaker rather than inventing a second ordering concept (e.g.
+lexicographic by `node_id`). Concretely: when multiple nodes are
+simultaneously ready, the one that appears earlier in `graph.nodes` is
+planned earlier. Two independently-constructed but value-equal
+`CompositionGraph`s therefore always produce value-equal
 `ExecutionPlan`s.
+
+**This deliberately differs from `CompositionGraph._has_cycle()`'s
+queue discipline (ADR-016), and that difference is intentional, not an
+inconsistency to reconcile.** `_has_cycle()`'s ready queue is a plain
+`list` popped via `.pop()` — LIFO. This is correct and sufficient for
+*its* contract, which only asks a yes/no question ("can every node
+eventually be removed?") and never exposes traversal order as
+observable behavior. `plan()`'s contract is different: the resulting
+order *is* the observable output, so the queue discipline is part of
+the public contract, not an implementation detail free to vary. Proven
+by direct construction during the 13B.3 review: for the diamond `A→B,
+A→C, B→D, C→D` declared in order `(A, B, C, D)`, a LIFO-shaped
+traversal (matching `_has_cycle()`'s exact shape) visits nodes in order
+`A, C, B, D` — silently reversing `B`/`C` relative to declaration
+order — while the FIFO discipline specified here visits `A, B, C, D`,
+matching the declared order as promised. `_has_cycle()` itself required
+no change; only `plan()`'s queue discipline is specified as FIFO,
+explicitly and separately, precisely because the two functions'
+contracts differ even though both are "Kahn's algorithm" in the
+informal sense.
+
+`deque.popleft()`/`deque.append()` are both O(1) amortized, preserving
+the target O(V + E) complexity; a `list.pop(0)`-based FIFO would work
+correctly but is O(n) per pop and must not be used.
+
+### `ExecutionPlan` does not implement `__iter__`/`__len__`/`__getitem__` in this version
+
+Resolves 13B.3 finding ADV-02 (MINOR). `Sequential` (Step 1) supports
+`__len__`/`__iter__`/`__getitem__` over its steps — but `Sequential` is
+a different kind of primitive, an executable `Module`, not a
+structural value type. `CompositionGraph` (ADR-016), the closer
+precedent, does **not** provide iteration sugar over `nodes`/
+`connections`; callers use those tuple fields directly. `ExecutionPlan`
+follows `CompositionGraph`'s precedent, not `Sequential`'s: callers use
+`plan.steps` directly (a plain tuple, itself iterable), with no
+`__iter__`/`__len__`/`__getitem__` defined on `ExecutionPlan` itself.
+This keeps the public surface exactly as small as 13B intended to
+freeze it, and is additive later if a real consumer demonstrates the
+need — removing an already-shipped `__iter__` would be a breaking
+change, so not adding one now costs nothing and avoids foreclosing a
+future decision.
 
 ### `ExecutionStep.dependencies` holds direct predecessors only, by node id (not transitive)
 
@@ -646,6 +725,13 @@ Step 13 design audit:
   dedicated test constructs the same diamond shape with `B`/`C` added
   to the graph in the opposite declared order and confirms the tie
   break follows that order, not id sort or any other implicit rule.
+  **This is the direct regression guard for 13B.3 finding ADV-01**: it
+  exists specifically to fail if a future refactor "simplifies" `plan()`
+  back toward `CompositionGraph._has_cycle()`'s LIFO queue shape,
+  silently reintroducing the bug the 13B.3 adversarial review caught
+  before any implementation existed. The expected order for `A, B, C,
+  D` declared in that order is exactly `A, B, C, D` — proven by direct
+  construction during 13B.3, not merely asserted.
 - **E12 (empty graph behavior)**: `plan(CompositionGraph(nodes=(),
   connections=()))` returns `ExecutionPlan(steps=())`, no exception.
 - Immutability: `ExecutionStep`/`ExecutionPlan` attribute assignment
