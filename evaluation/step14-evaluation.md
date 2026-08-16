@@ -130,8 +130,23 @@ expected_outcome_accuracy: 1.0
 
 ## Functional results
 
-27 new unit tests in `tests/unit/core/test_execution.py`. Combined with
-the pre-existing 329, total suite is 356.
+29 new tests: 27 unit tests in `tests/unit/core/test_execution.py`
+(mechanism-level, per the CTX/EXEC/FAIL/STATE/ADV/CONTRACT matrix
+above) plus 2 integration tests in
+`tests/integration/test_execution_boundary.py` (end-to-end through the
+public API surface — `ExecutionPlan` → `SequentialExecutor` →
+`StepHandler` → `StepExecutionContext` → `StepExecutionResult` —
+exercising a dependency-aware handler chain and a mid-plan failure,
+without touching `Component`, `CompositionGraph`, or
+`ExecutionEngine`; renamed from the initially-drafted
+`test_execution.py` to `test_execution_boundary.py` to avoid this
+repository's established rootless-layout pytest module-basename
+collision with `tests/unit/core/test_execution.py`, the same class of
+issue Step 13 hit and resolved the same way).
+
+Combined with the pre-existing 329 (unmodified), total suite is
+329 + 29 = 358, confirmed by direct `pytest` run (see "Test results"
+below), not assumed.
 
 | Invariant | Result |
 | --- | --- |
@@ -143,10 +158,22 @@ the pre-existing 329, total suite is 356.
 | Same executor instance is reusable across repeated, sequential `execute` calls without cross-contamination | PASS |
 | Sequential-call results match what two independent fresh instances would produce | PASS |
 
+## Integration results
+
+`tests/integration/test_execution_boundary.py` — 2 tests, exercising
+only the public API surface (`from ragtorch import ExecutionPlan,
+ExecutionStep, SequentialExecutor, StepExecutionContext`), not
+internal implementation details.
+
+| Invariant | Result |
+| --- | --- |
+| A 3-step dependency chain (retrieve → rerank → generate) runs correctly, each step's handler reading its dependency's already-computed result via `context.results`, final `StepExecutionResult` containing all three outputs | PASS |
+| A mid-plan handler failure (`RuntimeError`) propagates with its original message, and the step after the failing one is never called | PASS |
+
 ## Test results
 
 ```
-pytest:        356 passed (329 pre-existing, unmodified + 27 new)
+pytest:        358 passed (329 pre-existing, unmodified + 27 unit + 2 integration)
 ruff check:    All checks passed
 ruff format:   clean
 mypy:          Success: no issues found in 26 source files
@@ -161,19 +188,26 @@ local. `SequentialExecutor.execute` against a trivial handler
 
 | Steps | Total time (s) | Time/step (µs) |
 | ---: | ---: | ---: |
-| 10 | 0.000013 | 1.27 |
-| 100 | 0.000075 | 0.76 |
-| 1,000 | 0.001782 | 1.78 |
-| 10,000 | 0.145114 | 14.51 |
-| 100,000 | 98.833244 | 988.33 |
+| 10 | 0.000042 | 4.24 |
+| 100 | 0.000216 | 2.16 |
+| 1,000 | 0.006811 | 6.81 |
+| 10,000 | 0.724666 | 72.47 |
+| 100,000 | 237.286213 | 2372.86 |
+
+An earlier local run (recorded during implementation, before this
+final pre-PR gate) measured 98.8s total at 100,000 steps versus
+237.3s here — absolute wall-clock numbers vary run-to-run with
+machine load, as expected for an unpinned local benchmark. The number
+that matters is the *shape*, which is consistent across both runs:
+time/step is not constant, it grows with plan size.
 
 ### Interpretation
 
 This benchmark measures, it does not prove, an asymptotic bound. What
 it shows: time-per-step is **not** roughly constant across sizes — it
-grew by roughly 780x from the 10-step case to the 100,000-step case,
-with the clearest growth appearing between 1,000 and 100,000 steps.
-This is consistent with the accepted, documented v0.1 design trade-off
+grew by roughly 560x from the 10-step case to the 100,000-step case in
+this run, with the clearest growth appearing between 1,000 and 100,000
+steps. This is consistent with the accepted, documented v0.1 design trade-off
 in ADR-018 "Context construction cost": `StepExecutionContext.from_results`
 copies the entire accumulated results dict into a fresh
 `MappingProxyType` before every step, giving `0 + 1 + ... + (n-1)`
@@ -184,14 +218,20 @@ increasing with plan size, consistent with the expected copy cost, not
 a proof of an O(n²) bound by other means.
 
 At the 10/100/1,000-step range typical of realistic v0.1 pipelines,
-the absolute cost is negligible (under 2ms total even at 1,000 steps).
-The cost becomes visible only at the 10,000+ step range, which is far
-beyond any composition this framework currently supports building
+the absolute cost is negligible (under 10ms total even at 1,000 steps).
+The cost becomes material at the 10,000+ step range (under 1s at
+10,000 steps, 98.8s–237.3s at 100,000 steps across two local runs) —
+well beyond the plan sizes exercised
+by the current repository benchmarks and tests
 (`CompositionGraph`/`plan()` have no tested scenario near that size in
-this codebase). Per ADR-018's explicit decision, this is not "fixed"
-here — a persistent-result-store optimization is deferred to a future,
-measurement-informed ADR if a real workload ever demonstrates the cost
-matters at a size the framework actually produces.
+this codebase). This is a measured observation, not a claim about an
+established maximum graph size the framework supports — no such
+maximum has been defined. The cost is negligible for the sizes
+currently exercised by the repository's tests/benchmarks, but becomes
+material at much larger plan sizes. No performance threshold is
+introduced in v0.1; per ADR-018's explicit decision, future
+optimization (e.g. a persistent-result-store) is deferred unless a
+real workload demonstrates the need.
 
 This benchmark is **not** wired into CI (matching Step 13's own
 precedent: `benchmarks/step13_execution_plan.py` is also not part of
@@ -234,6 +274,7 @@ immutable-collections package (per ADR-018's explicit v0.1 decision).
 
 Scope: `src/ragtorch/core/execution.py` (new),
 `tests/unit/core/test_execution.py` (new, 27 tests),
+`tests/integration/test_execution_boundary.py` (new, 2 tests),
 `benchmarks/step14_execution_boundary.py` (new), `evaluation/step14-evaluation.md`
 (this document). ADR-018 and requirements matrix A66 already merged
 via PR #12/#13's separate docs-only review — see those PRs' own
