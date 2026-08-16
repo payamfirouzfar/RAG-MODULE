@@ -63,6 +63,13 @@ This matrix converts the frozen requirements into verifiable engineering obligat
 | A42 | Composition precondition checking is deterministic across repeated calls, on both success and failure paths | ADR-014 | none | `test_check_connection_is_deterministic_across_repeated_calls` |
 | A43 | The precondition-check error message identifies both port names and both type names | ADR-014 | none | `test_check_connection_error_contains_output_port_name`, `test_check_connection_error_contains_input_port_name`, `test_check_connection_error_contains_both_type_names` |
 | A44 | Composition precondition checking is provider-independent | ADR-014; `ports.py` imports only `ragtorch.core.errors` (unchanged from Step 7) | none | `test_ports_module_has_no_provider_dependencies` (AST-based, now covering `check_connection()` too) |
+| A45 | A single data-flow connection can be persisted as data, not merely checked in the moment | ADR-015; `ragtorch.core.connection.Connection`, a frozen value type | no collection/graph type holds multiple connections yet | `test_connection_constructs_for_compatible_ports` |
+| A46 | Connection directionality is enforced at runtime, not merely by type annotation | ADR-015; explicit `isinstance` checks in `__post_init__` — a correction over the ADR's first draft, which assumed annotations alone were sufficient | none — this is a permanent constraint, not a gap | `test_connection_rejects_input_port_as_source`, `test_connection_rejects_output_port_as_target` |
+| A47 | Connection node identifiers must be non-empty strings | ADR-015 | none | `test_connection_rejects_empty_source_node_id`, `test_connection_rejects_empty_target_node_id` |
+| A48 | Connection compatibility checking delegates to `check_connection()`, never duplicates it | ADR-015; `Connection.__post_init__`'s final step is exactly `check_connection(self.source_port, self.target_port)` | none — this is a permanent constraint, not a gap | `test_connection_delegates_to_check_connection_not_duplicate_logic` (compares error messages, not just "both raise") |
+| A49 | Connection has value equality and is hashable, with no synthetic identity | ADR-015; plain frozen `@dataclass`, consistent with `ArchitectureChild`'s existing precedent | a future mutable connection registry, if ever needed, would require reopening this decision | `test_equal_connections_have_value_equality`, `test_connection_is_hashable`, `test_equal_connections_hash_equally` |
+| A50 | Connection places no fan-out/fan-in cardinality constraint | ADR-015; deliberately undecided, deferred to a future collection/`Block` type | cardinality rules not yet designed | `test_multiple_connections_may_share_source`, `test_multiple_connections_may_share_target` |
+| A51 | Connection construction is provider-independent | ADR-015; `connection.py` imports only `ragtorch.core.errors`/`ragtorch.core.ports` | none | `test_connection_module_has_no_provider_dependencies` (AST-based, reusing the Step 7/10 pattern) |
 
 ## Step 5 status
 
@@ -203,10 +210,50 @@ costs ~0.7µs more, consistent with the added f-string construction and
 exception raise on the failure path — see
 `evaluation/step10-evaluation.md`.
 
+## Step 11 status
+
+Connection identity and directionality (A45-A51) is implemented per
+ADR-015: `ragtorch.core.connection.Connection`, a frozen value type
+persisting a single, directed, validated data-flow edge
+(`source_node_id`, `source_port: OutputPort`) → (`target_node_id`,
+`target_port: InputPort`). `__post_init__` enforces four invariants —
+non-empty node IDs, correct port role for each end — before delegating
+compatibility to the unchanged `check_connection()` (Step 10).
+`Component`, `Module`, `Sequential`, `ExecutionEngine`,
+`ExecutionContext`, `ArchitectureSnapshot`, `validate_snapshot()`, and
+`ports.py` itself are all unchanged — zero lines touched;
+`connection.py` is a new, standalone module.
+
+A Staff-review correction shaped the final contract before any code
+was written: the first draft relied on field type annotations
+(`source_port: OutputPort`, `target_port: InputPort`) alone to
+guarantee directionality, which is not a runtime guarantee in Python —
+and `check_connection()` (ADR-014) explicitly does not normalize
+non-`Port` arguments into `ValidationError`, so an annotation-only
+`Connection` could have silently constructed with its ends swapped.
+Two explicit `isinstance` checks were added at the `Connection`
+boundary specifically to close this, without reopening ADR-014's own
+documented non-guarantee for `check_connection()` itself.
+
+Fan-out/fan-in cardinality is deliberately left unconstrained (proven
+by dedicated tests, not merely unaddressed) — whether either pattern
+should be permitted, and where that rule would live, is explicit
+future work for a collection/`Block` type built on top of `Connection`,
+not decided here. No graph type, no cycles, no execution order, no
+serialization: this step proves the element, not the aggregate.
+
+Benchmarked overhead
+(`benchmarks/step11_connections.py`): `Connection(valid)` costs ~1.9µs
+more than `check_connection()` alone at p50 — the frozen-dataclass
+construction path is not free, even though each individual check is
+cheap — reported as measured rather than left at an earlier,
+incorrect "should be small" prediction. See
+`evaluation/step11-evaluation.md`.
+
 ## Next priority
 
 1. Add concurrency tests around event identity before moving event delivery to execution-scoped ownership.
-2. Design a `Block`/graph composition layer that uses `check_connection()` (Step 10), `ArchitectureSnapshot` (Step 8), and `validate_snapshot()` (Step 9) together to validate an actual architecture before execution — the payoff all three now exist to enable.
+2. Design a `Block`/graph collection type that holds multiple `Connection`s (Step 11), decides fan-out/fan-in cardinality, and uses `ArchitectureSnapshot` (Step 8) and `validate_snapshot()` (Step 9) together to validate an actual architecture before execution — the payoff all four now exist to enable.
 3. Consider whether the pre-existing `Module` cycle-registration gap (A29's named limitation) is worth a dedicated future ADR.
 4. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
 
