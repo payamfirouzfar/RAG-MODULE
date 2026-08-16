@@ -70,6 +70,19 @@ This matrix converts the frozen requirements into verifiable engineering obligat
 | A49 | Connection has value equality and is hashable, with no synthetic identity | ADR-015; plain frozen `@dataclass`, consistent with `ArchitectureChild`'s existing precedent | a future mutable connection registry, if ever needed, would require reopening this decision | `test_equal_connections_have_value_equality`, `test_connection_is_hashable`, `test_equal_connections_hash_equally` |
 | A50 | Connection places no fan-out/fan-in cardinality constraint | ADR-015; deliberately undecided, deferred to a future collection/`Block` type | cardinality rules not yet designed | `test_multiple_connections_may_share_source`, `test_multiple_connections_may_share_target` |
 | A51 | Connection construction is provider-independent | ADR-015; `connection.py` imports only `ragtorch.core.errors`/`ragtorch.core.ports` | none | `test_connection_module_has_no_provider_dependencies` (AST-based, reusing the Step 7/10 pattern) |
+| A52 | A collection of nodes and connections can be validated as a whole, not just pairwise | ADR-016; `ragtorch.core.composition.CompositionGraph` | none | `test_construction_succeeds_with_unique_node_ids`, `test_empty_graph_is_valid` |
+| A53 | Composition node identifiers are unique within a graph | ADR-016 invariant 1 | none | `test_construction_rejects_duplicate_node_ids` |
+| A54 | Every connection in a composition references nodes that actually exist in that graph | ADR-016 invariant 2 | none | `test_construction_rejects_connection_with_unknown_source`, `test_construction_rejects_connection_with_unknown_target` |
+| A55 | Composition graph node identity is independent of architecture-tree path identity | ADR-016; `GraphNode.id` is graph-local, not derived from or coupled to `ArchitectureNode.id` (ADR-012) — a Staff-review correction applied before implementation | none — this is a permanent constraint, not a gap | `test_graph_node_id_is_independent_of_architecture_path` |
+| A56 | Duplicate connections within a composition are rejected | ADR-016 invariant 5 | none | `test_construction_rejects_duplicate_connections` |
+| A57 | A composition input port accepts at most one incoming connection (fan-in ≤ 1) | ADR-016 invariant 6; deliberately conservative — see ADR-016 for why aggregation semantics belong to a future explicit component, not the graph | a future explicit aggregation mechanism, if ever justified | `test_construction_rejects_fan_in_to_same_target_port`, `test_construction_allows_different_target_ports_on_same_node` (proves the rule is port-level, not node-level) |
+| A58 | A composition output port may feed unlimited connections (fan-out unrestricted) | ADR-016 invariant 7 | none | `test_construction_allows_fan_out_from_same_source` |
+| A59 | A composition graph must be acyclic | ADR-016 invariant 8; detected via an iterative Kahn's-algorithm topological sort — a recursive DFS first draft was caught failing at 1,000 nodes by this step's own benchmark and rewritten before commit | none — deliberately not the invariant for every future RAG-MODULE graph concept (e.g. a future `Loop` primitive is explicit higher-level future work, not an exception to this rule) | `test_construction_rejects_two_node_cycle`, `test_construction_rejects_three_node_cycle`, `test_construction_rejects_disconnected_cycle`, `test_construction_accepts_valid_linear_chain` |
+| A60 | Removing a composition node cannot silently leave a dangling connection | ADR-016 invariant 9 | none | `test_remove_node_rejects_if_referenced_by_connection`, `test_remove_node_succeeds_when_unreferenced` |
+| A61 | Composition graph operations are immutable — functional updates return a new graph, never mutate the original | ADR-016; consistent with every prior structural type's immutability guarantee in this codebase | functional updates re-validate the full graph rather than incrementally verifying only the delta — see `evaluation/step12-evaluation.md` Limitations | `test_add_node_returns_new_graph_without_mutating_original`, `test_chained_updates_preserve_each_intermediate_graph` |
+| A62 | Composition graph iteration order is deterministic | ADR-016; `nodes`/`connections` are ordered tuples, not sets | none | `test_iteration_order_is_stable_across_repeated_access`, `test_equal_graphs_iterate_in_same_order`, `test_add_node_appends_new_node_last` |
+| A63 | Composition graph construction and every operation never execute a component | ADR-016; no `component.__call__` is ever invoked | none — this is a permanent constraint, not a gap | `test_construction_never_executes_component`, `test_graph_operations_never_execute_component` (both use an `ExplodingComponent` that raises if invoked) |
+| A64 | Composition graph construction is provider-independent | ADR-016; `composition.py` imports only `ragtorch.core.component`/`ragtorch.core.connection`/`ragtorch.core.errors` | none | `test_composition_module_has_no_provider_dependencies` (AST-based, reusing the established pattern) |
 
 ## Step 5 status
 
@@ -250,12 +263,61 @@ cheap — reported as measured rather than left at an earlier,
 incorrect "should be small" prediction. See
 `evaluation/step11-evaluation.md`.
 
+## Step 12 status
+
+Composition graph validation (A52-A64) is implemented per ADR-016:
+`ragtorch.core.composition.CompositionGraph`/`GraphNode`, an immutable,
+validated collection of nodes and `Connection`s enforcing nine
+canonical invariants in fixed order — unique node ids, referential
+integrity, inherited directionality/compatibility from `Connection`,
+no duplicate connections, fan-in ≤ 1 per input port (fan-out
+unrestricted), acyclicity, and no dangling connections after node
+removal. `Component`, `Module`, `Sequential`, `ExecutionEngine`,
+`ExecutionContext`, `ArchitectureSnapshot`, `validate_snapshot()`,
+`ports.py`, and `connection.py` are all unchanged — zero lines
+touched; `composition.py` is a new, standalone module.
+
+Two Staff-review corrections shaped the final contract. First:
+`GraphNode.id` is explicitly graph-local identity, deliberately not
+derived from or coupled to `ArchitectureNode.id` (ADR-012's dotted
+`named_modules()` path) — an unrelated `Module`-tree refactor (an
+attribute rename, a tree restructuring) must never silently break
+composition-graph identity, which matters for future caching,
+serialization, diffing, and reproducibility use cases. Second: cycle
+detection is scoped as a property of *this* graph type describing
+ordinary data-flow composition, not a universal invariant for every
+future RAG-MODULE graph concept — a future `Loop`/`Retry` primitive is
+explicit higher-level control-flow work, not an exception carved into
+`CompositionGraph` itself.
+
+A real bug was caught by this step's own benchmark, not by unit tests:
+the first `_has_cycle()` implementation used recursive DFS, which
+raised `RecursionError` on a 1,000-node linear chain (every unit test
+used ≤4 nodes and never exercised this path). Fixed by rewriting it as
+an iterative Kahn's-algorithm topological sort before commit — concrete
+evidence for why this project benchmarks at multiple scales rather
+than trusting correctness proven only at a single small size.
+
+Functional updates (`add_node`/`add_connection`/`remove_node`/
+`remove_connection`) each return a new, independently-validated graph
+rather than mutating `self`, consistent with every prior structural
+type's immutability guarantee — but each update re-validates the
+entire resulting graph rather than incrementally checking only the
+delta, an explicit, measured, and accepted tradeoff (see
+`evaluation/step12-evaluation.md` Limitations), not a silently-absorbed
+cost.
+
+Benchmarked scaling (10/100/1,000-node linear chains) confirms the
+O(N+E) design empirically: node count growing 10x costs roughly 10-12x
+time, not ~100x — see `evaluation/step12-evaluation.md`.
+
 ## Next priority
 
 1. Add concurrency tests around event identity before moving event delivery to execution-scoped ownership.
-2. Design a `Block`/graph collection type that holds multiple `Connection`s (Step 11), decides fan-out/fan-in cardinality, and uses `ArchitectureSnapshot` (Step 8) and `validate_snapshot()` (Step 9) together to validate an actual architecture before execution — the payoff all four now exist to enable.
+2. Design a `Block` type that consumes `CompositionGraph` (Step 12) as its validated structural foundation — the payoff every primitive since Step 6 exists to enable.
 3. Consider whether the pre-existing `Module` cycle-registration gap (A29's named limitation) is worth a dedicated future ADR.
-4. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
+4. Consider whether `CompositionGraph`'s full-revalidation-per-update cost (A61's named limitation) is worth an incremental-validation optimization, once a real workload demonstrates it matters.
+5. Keep the milestone rule: design → ADR → contract → implementation → tests → benchmark → evaluation → CI → documentation.
 
 The Component migration is intentionally **not** a rename of `Module`. We
 first proved the contract and compatibility boundary (Step 6) before any
