@@ -29,9 +29,14 @@ check_connection(), a raising precondition wrapper over
 is_compatible(): "ask" (is_compatible, bool) vs. "enforce"
 (check_connection, raises ValidationError). It does not integrate with
 ArchitectureSnapshot/validate_snapshot() — that remains future work for
-a composition/Block layer. No LLM, embedding, or vector-store
-integrations live here; those are built on top of this foundation in
-later steps.
+a composition/Block layer. Step 11 adds Connection: a frozen value
+type persisting a single, directed, validated data-flow edge
+(source_node_id, source_port) -> (target_node_id, target_port),
+delegating compatibility checking to check_connection() rather than
+duplicating it. Fan-out/fan-in cardinality, cycles, a graph/Block
+aggregate, execution order, and serialization remain explicit future
+work — see ADR-015. No LLM, embedding, or vector-store integrations
+live here; those are built on top of this foundation in later steps.
 """
 
 from ragtorch.core import (
@@ -40,6 +45,7 @@ from ragtorch.core import (
     ArchitectureSnapshot,
     Component,
     ConfigurationError,
+    Connection,
     Event,
     EventBus,
     EventType,
@@ -82,6 +88,7 @@ __version__ = "0.4.0"
 __all__ = [
     "__version__",
     "Component",
+    "Connection",
     "Module",
     "RAGModule",
     "Sequential",
