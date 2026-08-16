@@ -2,7 +2,16 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Confirmed by real GitHub Actions CI on PR #7 (run
+[31942271953](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31942271953)):
+296/296 tests passed on Python 3.10, 3.11, and 3.12; lint green on all
+three. This includes coverage of the iterative Kahn's-algorithm cycle
+detection that replaced an earlier recursive DFS implementation after
+the recursive version was caught raising `RecursionError` on a
+1,000-node linear chain by this step's own benchmark. Not accepted
+from local checks alone, per project convention.
 
 ## Context
 
