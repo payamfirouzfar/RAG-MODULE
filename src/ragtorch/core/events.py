@@ -1,8 +1,7 @@
 """Lightweight, vendor-agnostic event system for observability.
 
-This is intentionally minimal: an ``EventType`` enum, an ``Event``
-dataclass, and an ``EventBus`` that fans events out to listeners.
-No external observability vendor is referenced here.
+Events carry correlation identity when a Module is executed with an
+ExecutionContext. Delivery remains synchronous and vendor-neutral.
 """
 
 from __future__ import annotations
@@ -29,6 +28,8 @@ class Event:
     module_name: str
     timestamp: float = field(default_factory=time.monotonic)
     payload: dict[str, Any] = field(default_factory=dict)
+    run_id: str | None = None
+    parent_run_id: str | None = None
 
 
 EventListener = Callable[[Event], None]
@@ -49,4 +50,9 @@ class EventBus:
     def publish(self, event: Event) -> None:
         for listener in self._listeners:
             listener(event)
-        logger.debug("event: %s module=%s", event.type.value, event.module_name)
+        logger.debug(
+            "event: %s module=%s run_id=%s",
+            event.type.value,
+            event.module_name,
+            event.run_id,
+        )

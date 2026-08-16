@@ -36,12 +36,22 @@ jobs:
         run: pytest --cov=ragtorch --cov-report=term-missing
 
       - name: Evaluation smoke test
-        run: python -c "
-          from ragtorch.evaluation import EvaluationCase, Evaluator, ExactMatch;
-          cases = [EvaluationCase(input=1, expected=1), EvaluationCase(input=2, expected=2)];
-          result = Evaluator([ExactMatch()]).evaluate(lambda x: x, cases);
+        run: |
+          python -c "
+          from ragtorch.evaluation import EvaluationCase, Evaluator, ExactMatch
+          cases = [EvaluationCase(input=1, expected=1), EvaluationCase(input=2, expected=2)]
+          result = Evaluator([ExactMatch()]).evaluate(lambda x: x, cases)
           assert result.case_count == 2 and result.error_count == 0 and result.mean('exact_match') == 1.0, result.to_dict()
           "
+
+      - name: Step 5 performance benchmark
+        run: python benchmarks/step5_event_context_overhead.py | tee step5_event_context_overhead.txt
+
+      - name: Upload Step 5 benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: step5-event-context-overhead-py${{ matrix.python-version }}
+          path: step5_event_context_overhead.txt
 
       - name: Build package
         run: pip install build && python -m build

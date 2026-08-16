@@ -1,8 +1,9 @@
-"""The Module contract: the single most important abstraction in ragtorch.
+"""The Module contract: the core composable execution primitive.
 
-Every component in the framework — chunkers, retrievers, routers, and
-eventually full RAG systems — is a Module. A Module is callable, may
-own named child modules, and can describe its own architecture.
+Module remains the concrete implementation primitive. It structurally
+satisfies the public Component contract (ragtorch.core.component) via
+the name/component_type properties below, without inheriting from it —
+see ADR-010.
 """
 
 from __future__ import annotations
@@ -24,16 +25,14 @@ _forward_accepts_context_cache: dict[type, bool] = {}
 
 
 def event_bus() -> EventBus:
-    """Return the process-wide event bus used by Module execution."""
+    """Return the compatibility event bus used by Module execution."""
     return _bus
 
 
 def _forward_accepts_context(cls: type[Module]) -> bool:
-    """Does ``cls.forward`` declare a ``context`` parameter?
+    """Does ``cls.forward`` declare a ``context`` parameter.
 
-    Cached per class (not per instance) so this reflection cost — see
-    ADR-007 invariant I7 — is paid once per Module subclass, not once
-    per call.
+    Cached per class so reflection cost is paid once per Module subclass.
     """
     cached = _forward_accepts_context_cache.get(cls)
     if cached is not None:
@@ -47,25 +46,31 @@ def _forward_accepts_context(cls: type[Module]) -> bool:
 class Module:
     """Base class for every component in ragtorch.
 
-    Subclasses implement :meth:`forward`. Calling the instance goes
-    through :meth:`__call__`, which is responsible for framework-level
-    behavior (currently: start/finish/fail events and error wrapping)
-    while ``forward`` holds the component's actual logic.
-
-    Child modules assigned as attributes are automatically registered,
-    mirroring the ergonomics of ``self.chunker = Chunker()`` making the
-    chunker discoverable via :meth:`named_modules`.
+    Subclasses implement :meth:`forward`. Calling the instance goes through
+    :meth:`__call__`, which provides framework-level lifecycle behavior.
+    Child modules assigned as attributes are automatically registered.
     """
 
     _modules: OrderedDict[str, Module]
     _name: str
 
     def __init__(self) -> None:
-        # Must be set before any attribute assignment triggers __setattr__.
         object.__setattr__(self, "_modules", OrderedDict())
         object.__setattr__(self, "_name", self.__class__.__name__)
 
-    # -- registration ------------------------------------------------
+    @property
+    def name(self) -> str:
+        """Return the module's runtime name (see ADR-010: Component contract)."""
+        return self._name
+
+    @property
+    def component_type(self) -> str:
+        """Return the module's component type descriptor (see ADR-010).
+
+        Currently ``type(self).__name__`` — descriptive identity, not
+        yet a stable serialization identifier.
+        """
+        return type(self).__name__
 
     def __setattr__(self, name: str, value: Any) -> None:
         modules = self.__dict__.get("_modules")
@@ -74,11 +79,7 @@ class Module:
         object.__setattr__(self, name, value)
 
     def register_module(self, name: str, module: Module) -> None:
-        """Explicitly register a child module under ``name``.
-
-        Raises RegistryError if ``name`` is already registered to a
-        different module instance.
-        """
+        """Explicitly register a child module under ``name``."""
         if not isinstance(module, Module):
             raise RegistryError(
                 f"Cannot register '{name}': expected a Module instance, "
@@ -95,49 +96,85 @@ class Module:
         self._modules[name] = module
 
     def children(self) -> Iterator[Module]:
-        """Yield immediate child modules."""
         yield from self._modules.values()
 
     def named_children(self) -> Iterator[tuple[str, Module]]:
-        """Yield (name, module) pairs for immediate children."""
         yield from self._modules.items()
 
     def modules(self) -> Iterator[Module]:
-        """Yield self and all descendant modules, depth-first."""
         yield self
         for child in self._modules.values():
             yield from child.modules()
 
     def named_modules(self, prefix: str = "") -> Iterator[tuple[str, Module]]:
-        """Yield (dotted_name, module) pairs for self and all descendants."""
         yield prefix or self._name, self
         for name, child in self._modules.items():
             child_prefix = f"{prefix}.{name}" if prefix else name
             yield from child.named_modules(child_prefix)
 
-    # -- execution -----------------------------------------------------
-
     def __call__(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
-        _bus.publish(Event(EventType.MODULE_STARTED, self._name))
+        if context is None:
+            _bus.publish(Event(EventType.MODULE_STARTED, self._name))
+            try:
+                result = self.forward(input)
+            except Exception as exc:
+                _bus.publish(
+                    Event(
+                        EventType.MODULE_FAILED,
+                        self._name,
+                        payload={"error": str(exc)},
+                    )
+                )
+                if isinstance(exc, RegistryError):
+                    raise
+                raise ExecutionError(
+                    f"Module '{self._name}' raised {type(exc).__name__}: {exc}"
+                ) from exc
+            _bus.publish(Event(EventType.MODULE_FINISHED, self._name))
+            return result
+
+        run_id = context.run_id
+        parent_run_id = context.parent_run_id
+        _bus.publish(
+            Event(
+                EventType.MODULE_STARTED,
+                self._name,
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+            )
+        )
         try:
-            if context is not None and _forward_accepts_context(type(self)):
+            if _forward_accepts_context(type(self)):
                 result = self.forward(input, context=context)
             else:
                 result = self.forward(input)
         except Exception as exc:
-            _bus.publish(Event(EventType.MODULE_FAILED, self._name, payload={"error": str(exc)}))
+            _bus.publish(
+                Event(
+                    EventType.MODULE_FAILED,
+                    self._name,
+                    payload={"error": str(exc)},
+                    run_id=run_id,
+                    parent_run_id=parent_run_id,
+                )
+            )
             if isinstance(exc, RegistryError):
                 raise
             raise ExecutionError(
                 f"Module '{self._name}' raised {type(exc).__name__}: {exc}"
             ) from exc
-        _bus.publish(Event(EventType.MODULE_FINISHED, self._name))
+        _bus.publish(
+            Event(
+                EventType.MODULE_FINISHED,
+                self._name,
+                run_id=run_id,
+                parent_run_id=parent_run_id,
+            )
+        )
         return result
 
     def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
         raise NotImplementedError(f"{type(self).__name__} must implement forward().")
-
-    # -- inspection ------------------------------------------------------
 
     def inspect(self) -> str:
         """Return a detailed, indented tree of this module's architecture."""
@@ -179,7 +216,6 @@ def _max_depth(module: Module) -> int:
 class RAGModule(Module):
     """Marker base class for top-level, RAG-specific systems.
 
-    Semantically distinct from a generic :class:`Module` so framework
-    code and users can identify top-level RAG systems via
-    ``isinstance(x, RAGModule)``.
+    Its marker semantics are retained for backward compatibility while the
+    v0.1 architecture defines a richer future Architecture contract.
     """
