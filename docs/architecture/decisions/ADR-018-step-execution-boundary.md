@@ -9,45 +9,43 @@ Proposed
 After Step 13, `ExecutionPlan` (ADR-017) can answer "given a valid
 `CompositionGraph`, in what deterministic order should its nodes run,
 and what does each node depend on?" — but nothing in the codebase yet
-answers "how does invoking *one* planned node actually happen?"
-`ExecutionStep.node_id` names a `GraphNode.id`; `CompositionGraph`
-(ADR-016) is the only existing structure mapping that id to a real
-`Component` instance; and `ExecutionPlan` deliberately does not retain
-a reference to the graph it was derived from (ADR-017), so something
-between "I have a plan" and "components actually ran" must resolve
-identity, supply inputs, invoke the component, and surface the result
-or failure — without becoming a second `ExecutionEngine`, without
-knowing anything about providers, and without prematurely deciding
-scheduling, concurrency, retries, or observability.
+answers "how does a plan actually get run, and how does one planned
+node's work actually happen?" `ExecutionStep.node_id` names a
+`GraphNode.id`; `CompositionGraph` (ADR-016) is the only existing
+structure mapping that id to a real `Component` instance; and
+`ExecutionPlan` deliberately does not retain a reference to the graph
+it was derived from (ADR-017). Something must walk `plan.steps` in
+order, invoke whatever "work" each `node_id` represents, make prior
+steps' results available to later ones, and surface failures — without
+becoming a second `ExecutionEngine`, without knowing anything about
+providers, and without prematurely deciding scheduling, concurrency,
+retries, or observability.
 
 `ExecutionEngine` (ADR-006/ADR-008) already exists and is bound to
-`Module`, not `Component`/`ExecutionStep` — it coordinates
+`Module`, not `ExecutionPlan` — it coordinates
 `Run`/`Trace`/`MetricsCollector` around a single `Module.__call__` and
 re-raises failures after recording them (verified by reading
 `engine.py`: `except Exception as exc: run.fail(exc); ...; raise`).
 `Component` (ADR-010) remains deliberately minimal — `name`,
 `component_type`, `__call__(input, *, context=None)` — with zero
-provider or scheduling awareness. `Module.__call__` (Step 1) already
-establishes a wrapping convention for component-level failures: every
-exception except `RegistryError` is re-raised as
-`ExecutionError(...) from exc` (verified in `module.py`), used and
-tested across more than a dozen existing test files. `docs/architecture/v0.1-architecture.md`
+provider or scheduling awareness. `docs/architecture/v0.1-architecture.md`
 §2 already names "Runtime" as the layer that "executes an architecture
 and owns execution identity, scheduling semantics, lifecycle, error
 propagation, policies, and observability integration" — separate from
 component business logic — so this ADR's boundary is not a new
 invention, it is the first concrete piece of that already-named layer.
 
-**This ADR does not build a plan runner, a scheduler, concurrency, or
-`ExecutionEngine` integration.** It answers one narrower question: given
-one `ExecutionStep`, its resolved `Component`, its resolved input
-value(s), and an `ExecutionContext`, what is the smallest stable,
-provider-independent contract for invoking that single step and
-surfacing its result or failure? Confirmed with the project owner
-before drafting, following an 18-question audit (14A) grounded in
-direct inspection of `component.py`, `context.py`, `engine.py`,
-`ports.py`, `composition.py`, `execution_plan.py`, and `errors.py` —
-not assumed from memory.
+Grounded in direct inspection (14A audit) of `component.py`,
+`context.py`, `engine.py`, `ports.py`, `composition.py`,
+`execution_plan.py`, and `errors.py` — not assumed from memory.
+
+**This ADR does not build `ExecutionEngine` integration, async
+execution, parallel/distributed execution, retries, timeouts, or a
+provider adapter.** It answers: given an `ExecutionPlan` and a
+caller-supplied handler that knows how to turn one `node_id` into
+work, what is the smallest stable, provider-independent contract for
+running every step in order, threading prior results forward, and
+propagating failure deterministically?
 
 ```text
 CompositionGraph (ADR-016)
@@ -56,452 +54,454 @@ CompositionGraph (ADR-016)
 ExecutionPlan (ADR-017) -- WHAT order, WHAT depends on WHAT
       |
       v
-StepExecutor (this ADR) -- HOW one step is invoked
+Executor / SequentialExecutor (this ADR) -- runs the plan, step by step
       |
       v
-Component (ADR-010)
+StepHandler (caller-supplied) -- turns one node_id into work
       |
       v
-provider / model / retriever / etc.
+Component / provider / model / retriever / etc. (caller's choice)
 
 Future, independent of this ADR:
-  PlanRunner    -- orchestrates MANY steps using StepExecutor
-  ExecutionEngine -- Run/Trace/Metrics, currently bound to Module
+  AsyncExecutor, ParallelExecutor, DistributedExecutor -- alternate Executor implementations
+  ExecutionEngine integration -- Run/Trace/Metrics, currently bound to Module
 ```
 
 ## Problem
 
-We need a minimal, provider-independent contract for invoking one
-already-identified `Component` with one already-resolved input value,
-under an explicit `ExecutionContext`, that (a) does not resolve
-`node_id -> Component` itself (that stays the caller's/future
-`PlanRunner`'s responsibility, since `ExecutionPlan` does not retain
-the graph), (b) does not schedule, retry, time out, or run
-concurrently, (c) does not duplicate `ExecutionEngine`'s
-observability responsibility, and (d) fails loud with a consistent,
-already-established exception convention rather than a new one.
+We need a minimal, provider-independent contract for running an
+`ExecutionPlan` to completion, where:
+
+- the executor decides *only* iteration order and result bookkeeping —
+  never what a node's work actually is;
+- each step's work is performed by a caller-supplied `StepHandler`,
+  identified only by `node_id`, so the executor never imports or
+  references `Component`, `CompositionGraph`, or any provider;
+- earlier steps' results are visible to later steps without allowing a
+  handler to mutate the executor's own bookkeeping;
+- failure in one step stops the plan deterministically rather than
+  continuing to downstream steps or silently swallowing the error;
+- the contract is written so alternate executors (async, parallel,
+  distributed) can satisfy the same shape later without this version
+  becoming a special case.
 
 ## Open questions this ADR must decide before any code is written
 
-The 14A audit raised 18 questions, following the same discipline
-ADR-017 established. Each is given an explicit decision below, with
-the rejected alternative stated, not merely the chosen answer.
+**Q1 — What does the executor consume?** An `ExecutionPlan` (ADR-017)
+and a `StepHandler`. Not a `CompositionGraph` — `ExecutionPlan` already
+carries the order and dependency information the executor needs, and
+consuming the graph directly would mean recomputing what `plan()`
+already computed, duplicating Step 13.
 
-**Q1 — What exactly is being executed?** An `ExecutionStep` identifies
-*which* node (`node_id`) and its declared direct dependencies; the
-`Component` to invoke is resolved by the caller (see Q3) before
-calling the executor. The executor's contract operates on a resolved
-`Component` plus the `ExecutionStep` that named it — not on the
-`GraphNode`, not on the raw `node_id` alone, and not on `CompositionGraph`.
+**Q2 — Does the executor resolve `node_id -> Component` itself?** No.
+It never sees a `Component` at all. `node_id -> work` resolution is
+entirely the handler's responsibility, supplied by the caller. Rejected:
+an executor that accepts a `CompositionGraph` or a component registry
+to resolve nodes itself — that would reopen `ExecutionPlan`'s explicit
+non-retention-of-graph decision one layer up, and would hard-code
+"work" to mean "a `Component` call," foreclosing the option of a
+handler backed by something else (a test double, a non-`Component`
+function) without any architectural benefit.
 
-**Q2 — Does the executor receive the `Component` directly, or resolve
-it itself?** Directly. Rejected: having the executor perform
-`node_id -> Component` resolution itself, which would require it to
-either hold a `CompositionGraph` reference (reopening ADR-017's
-explicit non-retention decision one layer up) or invent a second
-node-registry concept duplicating `CompositionGraph.nodes`. The
-executor's contract takes an already-resolved `Component` as an
-explicit argument; something else (a future `PlanRunner`, or a test,
-or any caller) performs the lookup against the `CompositionGraph` it
-already has in scope.
+**Q3 — What does a handler receive?** `node_id: str` and an
+`ExecutionContext` exposing prior steps' results
+(`context.results: Mapping[str, object]`). Not the full
+`ExecutionStep` (dependencies are already implicit in the plan's
+ordering and in which prior results the handler chooses to read), and
+not the `CompositionGraph` or `Component` — resolving `node_id` to
+actual work is the handler's job, using whatever mapping the handler's
+owner already has (typically `CompositionGraph.nodes`).
 
-**Q3 — Where does node lookup happen?** Outside this ADR's scope,
-performed by the caller using `CompositionGraph.nodes` directly (a
-`tuple[GraphNode, ...]`, already searchable by `id`). This ADR does
-not introduce an executor registry, an execution runtime, or any new
-id-to-component mapping — `CompositionGraph` remains the single source
-of truth for that mapping, per the same single-source-of-truth
-discipline every prior layer in this codebase has followed.
+**Q4 — How do later steps see earlier steps' results?** Via
+`ExecutionContext.results`, an immutable mapping rebuilt fresh before
+each step and handed to that step's handler call — never the same
+mutable dict the executor uses internally. Rejected: passing the raw
+internal `dict` directly, which would let a handler mutate the
+executor's own bookkeeping (`context.results["x"] = "bad"` silently
+corrupting subsequent steps' view of history) — see Q9/ADV-05..08 for
+the full immutability/statelessness reasoning.
 
-**Q4 — Where do inputs come from, and what shape are they?** A single
-opaque `object` value per step, supplied by the caller — not a
-`Mapping[str, object]` keyed by dependency node id, and not a
-port-keyed structure. Rejected: reusing `InputPort`/`OutputPort` for
-runtime value routing, since ports (ADR-011) are deliberately static
-*metadata* (`name`, `type`), never runtime values, and reusing them for
-this purpose would silently expand their scope beyond what ADR-011
-committed to. Rejected: a `Mapping[str, object]` of all upstream
-outputs, since deciding *how* a step with multiple dependencies
-combines their outputs into one input value is exactly the kind of
-component-specific aggregation semantics ADR-016 already deferred for
-`CompositionGraph`'s fan-in rule (see ADR-016 "Cardinality") — this
-executor boundary does not silently reopen that deferral by picking an
-input-shape convention that presumes an answer. The executor accepts
-one input value per invocation; how a future `PlanRunner` produces
-that one value from a step's dependencies (pass-through for a single
-dependency, an explicit merge step for multiple) is that runner's
-decision, not this ADR's.
+**Q5 — What shape holds the final output?** `ExecutionResult`, a
+frozen dataclass wrapping an immutable `values: Mapping[str, object]`
+keyed by `node_id`, built once after every step completes — not
+returned incrementally, not mutable after construction.
 
-**Q5 — Where do outputs go?** The executor returns the `Component`'s
-raw output value directly — not wrapped in an `ExecutionValue`, not
-keyed by node id, not stored anywhere. The executor's contract is a
-single invocation, not a plan-wide result store; a future `PlanRunner`
-that needs `node_id -> output` bookkeeping across an entire plan owns
-that structure itself, built from repeated calls to this executor.
+**Q6 — Does this ADR run more than one step?** Yes — unlike a
+`StepExecutor`-shaped single-invocation boundary, this ADR's contract
+*is* the plan runner: `Executor.execute(plan, handler) -> ExecutionResult`
+walks every step in `plan.steps` in order and returns the aggregated
+result. This intentionally supersedes an earlier single-step-only
+draft of this ADR (see "Revision note" below).
 
-**Q6 — Does this ADR execute multiple nodes / a whole plan?** No.
-Explicitly out of scope — see Non-goals. This ADR establishes the
-single-step invocation boundary only; a `PlanRunner` that walks
-`ExecutionPlan.steps` and calls this executor once per step,
-respecting dependency order, is deliberately deferred to a future step.
+**Q7 — Sync or async?** Synchronous in this version.
+`SequentialExecutor` is one concrete implementation of the `Executor`
+`Protocol`; a future `AsyncExecutor` or `ParallelExecutor` can satisfy
+the same `Executor` contract shape (or a clearly-named async sibling
+protocol) without this version becoming a special case. No
+`async`/`Awaitable` is introduced now, since no consumer of this
+boundary requires it yet.
 
-**Q7 — Sync or async?** Synchronous in this version. The contract is
-written so a future async variant is additive (a distinct
-`async def execute` on a separate protocol, or a distinct
-implementation), not a breaking change to this one — see "Future
-extensibility" below. No `Awaitable`/`async` is introduced now, since
-no consumer of this boundary requires it yet and introducing it
-without a real async component to test against would be exactly the
-kind of speculative API this project has consistently avoided.
+**Q8 — Does the executor know about providers?** No. `Executor`,
+`SequentialExecutor`, `StepHandler`, `ExecutionContext`, and
+`ExecutionResult` mention no provider, model, or vendor SDK anywhere
+in their contracts — the handler is the only place provider-specific
+code can live, and it lives entirely outside this module, supplied by
+the caller.
 
-**Q8 — Does the executor know about providers?** No. Not contested —
-`Component` (ADR-010) already has zero provider awareness; this
-executor's contract operates purely in terms of `Component`,
-`ExecutionStep`, and `ExecutionContext`, none of which mention any
-provider, model, or vendor SDK.
+**Q9 — Does the executor retain the plan or context after execution?**
+No. `SequentialExecutor.execute` is stateless: it holds no `self.plan`,
+no `self._context`, no `self._results` surviving past the call. Each
+call builds its own local `results: dict[str, object]`, discarded
+(save for what's copied into the returned `ExecutionResult`) once
+`execute` returns. This is a deliberate concurrency-readiness property:
+a stateless executor can safely be reused or even shared across
+concurrent `execute` calls in a future implementation without one
+call's bookkeeping leaking into another's.
 
-**Q9 — Does the executor depend on `ExecutionEngine`?** No.
-`execution.py` (this ADR's module) will not import
-`ragtorch.core.engine`. The dependency direction remains one-way:
-`ExecutionPlan` -> step executor -> `Component`, entirely independent
-of `ExecutionEngine` -> `Run`/`Trace`/`Metrics`. Connecting the two is
-explicit future work (see Non-goals), not assumed or implied by this ADR.
+**Q10 — Failure behavior: swallow or propagate?** Propagate, and stop.
+If a handler raises, `SequentialExecutor.execute` does not catch it,
+does not continue to downstream steps, and does not return a partial
+`ExecutionResult` — the exception propagates to the executor's caller
+unmodified. This matches every existing execution-adjacent boundary in
+this codebase (`Module.__call__`, `ExecutionEngine.execute`), which
+re-raise/propagate rather than return a sentinel or a
+`Result(success=False)` object.
 
-**Q10 — Failure behavior: swallow or propagate?** Propagate. Not
-contested — every existing execution-adjacent boundary in this
-codebase (`Module.__call__`, `ExecutionEngine.execute`) re-raises
-after recording/wrapping, never returns a sentinel or a
-`Result(success=False)` object. This executor follows the same rule:
-a component's exception is never silently converted into a return
-value.
+**Q11 — Should failure information be wrapped?** No — propagated
+as-is, unwrapped, via ordinary Python exception propagation (no
+`try`/`except` in `SequentialExecutor.execute` at all). This is a
+considered departure from `Module.__call__`'s `ExecutionError`-wrapping
+convention, decided explicitly for this ADR's revision: the executor
+here does not itself invoke a `Component` (see Q2/Q3) — it invokes a
+caller-supplied `StepHandler` of unknown provenance, which may already
+raise a meaningful, specific exception (including `ExecutionError`
+itself, if the handler internally calls a `Component`/`Module`).
+Wrapping an already-meaningful exception in a second layer of
+`ExecutionError` here would obscure rather than clarify the failure,
+and — because the handler is caller-owned, not a fixed `Component`
+contract — there is no single "kind of event" this layer can name the
+way `Module.__call__` names "a module raised." A handler that wants
+`ExecutionError` semantics can raise one itself. See "Revision note"
+below for why this differs from the previously-drafted `StepExecutor`
+design, which *did* wrap, because it invoked `Component` directly.
 
-**Q11 — Should failure information be wrapped, and how?** Wrapped in
-`ExecutionError`, via `raise ExecutionError(...) from exc` — **matching
-`Module.__call__`'s existing, established convention exactly**, found
-during the 14A audit (`module.py`: `raise ExecutionError(f"Module
-{self._name!r} raised {type(exc).__name__}: {exc}") from exc` for
-every exception except `RegistryError`). This was a genuine decision
-point, not a formality: an earlier draft of this audit favored
-preserving the original exception type unwrapped, for callers that
-want to catch a specific provider exception. That preference is
-rejected here in favor of consistency: this codebase already has
-exactly one established failure-wrapping convention for "a
-component/module raised during invocation," and introducing a second,
-different one (unwrapped) for `Component`/`ExecutionStep` invocation
-would mean two different things happen depending on whether a
-component is invoked via `Module.__call__` or via this new executor —
-for what is conceptually the same kind of event. `raise ... from exc`
-preserves the original exception via `__cause__`, so a caller that
-truly needs the original type can still access `exc.__cause__` or
-inspect the chain; `except RAGTorchError:` (or `except ExecutionError:`)
-continues to catch every execution failure uniformly across the
-framework, exactly as it already does for `Module`.
+**Q12 — Retry?** Not in this ADR. Deferred to a future policy layer,
+for the same reasons given below in Non-goals.
 
-**Q12 — Retry?** Not in this ADR. No `retry=N`/backoff parameter.
-Retry semantics differ radically by component (a network call retries
-differently than a local computation), and a generic retry policy
-imposed at this layer would presume an answer no real component has
-yet demonstrated a need for. Deferred to a future policy layer — see
-Non-goals.
+**Q13 — Timeout?** Not in this ADR, for the same reason as Q12.
 
-**Q13 — Timeout?** Not in this ADR, for the same reason as Q12, plus:
-a generic timeout mechanism raises unresolved questions (thread vs.
-async cancellation, partial side effects, cleanup) this ADR has no
-basis to answer yet. Deferred — see Non-goals.
+**Q14 — Concurrency?** Not implemented, but not foreclosed by the
+`Executor` `Protocol`'s shape — see Q7/Q9.
 
-**Q14 — Concurrency?** Not implemented, but not foreclosed.
-`ExecutionStep.dependencies` (ADR-017) already carries exactly the
-information a future concurrent scheduler needs to determine
-readiness; this ADR's contract (one step, one call, synchronous) does
-not prevent a future `PlanRunner` from calling multiple independent
-executors concurrently — it just does not implement or expose that
-here.
+**Q15 — Serialization?** Not implemented. `ExecutionResult` is a plain
+frozen dataclass over a `Mapping`; nothing about this ADR requires it
+to be serializable, and nothing prevents a caller from serializing
+`result.values` themselves if its contents happen to be serializable.
 
-**Q15 — Serialization?** Not implemented. The executor's *contract*
-(a `Component`, an `ExecutionStep`, an `ExecutionContext`, an input
-value, an output value) is not itself a data structure to serialize —
-it is a call shape. Nothing about this ADR requires `ExecutionPlan`'s
-existing serialization-friendliness (ADR-017) to change, since the
-executor never becomes part of a plan's data.
+**Q16 — Observability?** Not owned by `Executor`/`SequentialExecutor`
+in this version. Connecting `ExecutionEngine`'s
+`Run`/`Trace`/`Metrics` to plan-level execution is explicit, deferred
+future work — see Non-goals.
 
-**Q16 — Observability?** Not owned by the step executor in this
-version. `ExecutionEngine` already owns `Run`/`Trace`/`Metrics`
-end-to-end for `Module`; duplicating any part of that responsibility
-here — even partially — would create two competing observability
-paths for what should eventually be one execution story. Connecting
-`ExecutionEngine`'s observability to step-level execution is
-explicit, deliberately deferred future work (see Non-goals), not
-solved by inventing a smaller, parallel observability mechanism now.
-
-**Q17 — Security / trust boundary?** Component invocation is trusted
-application code, exactly as it already is for `Module.__call__` and
-`ExecutionEngine.execute` — this ADR introduces no new trust boundary,
-no sandboxing, and no restriction on what a `Component` may do once
-invoked. Sandboxing untrusted component code, if ever needed, is an
-entirely different, unrelated security boundary this ADR does not
-address.
+**Q17 — Security / trust boundary?** Handler invocation is trusted
+application code, exactly as `Module.__call__`/`ExecutionEngine.execute`
+already treat component invocation. No new trust boundary, no
+sandboxing.
 
 **Q18 — API stability: what is the smallest contract confident enough
-to freeze now?** A single-method `Protocol` (see Public contract
-below) taking exactly `Component`, `ExecutionStep`, `ExecutionContext`,
-and one input value, returning one output value, raising
-`ExecutionError` on failure. No scheduler, worker, thread pool, retry
-policy, timeout policy, provider registry, serialization, or
-distributed-execution concept is exposed — each is explicitly a
-Non-goal, not implied by the shape of this contract.
+to freeze now?** `Executor` (`Protocol`, one method:
+`execute(plan, handler) -> ExecutionResult`), `StepHandler`
+(`Protocol`, one method: `__call__(node_id, context) -> object`),
+`ExecutionContext` (frozen, `results: Mapping[str, object]`),
+`ExecutionResult` (frozen, `values: Mapping[str, object]`), and
+`SequentialExecutor` as the sole concrete `Executor` implementation.
+No scheduler, retry policy, timeout policy, provider registry, or
+distributed-execution concept is exposed.
+
+## Revision note
+
+An earlier draft of this ADR (commit `6f1ac10`, unmerged) defined a
+narrower `StepExecutor.execute(step, component, input, *, context)`
+that invoked exactly one already-resolved `Component` and wrapped
+failures in `ExecutionError`, explicitly deferring any plan-wide
+runner to a future step. That draft is **superseded** by this
+revision at the project owner's explicit direction: Step 14 should
+deliver the plan-runner boundary now (`Executor`/`SequentialExecutor`
+walking `plan.steps`), with node-to-work resolution pushed into a
+caller-supplied `StepHandler` rather than the executor accepting a
+pre-resolved `Component`. This changes two decisions from the prior
+draft: (1) the executor now runs a whole plan, not one step (Q6); (2)
+failures propagate unwrapped rather than being wrapped in
+`ExecutionError`, because the executor no longer invokes `Component`
+directly and has no fixed "kind of event" to name (Q11).
 
 ## Decision
 
-### Naming and location: `StepExecutor`, `src/ragtorch/core/execution.py`
+### Naming and location: `Executor`, `SequentialExecutor`, `src/ragtorch/core/execution.py`
 
 A new module, not an addition to `execution_plan.py` (a different
-concern: deriving an order vs. invoking one step) or `engine.py` (a
-different concern: `Module`-bound observability vs. `Component`-bound
-invocation). `execution.py` (not `executor.py` or `runner.py`) names
-the concern this module owns — invocation — without presuming the
-name of a future plan-level runner.
+concern: deriving an order vs. running one) or `engine.py` (a
+different concern: `Module`-bound observability vs. plan-bound
+iteration).
 
 ### Public contract
 
 ```python
+from dataclasses import dataclass
+from types import MappingProxyType
+from typing import Mapping, Protocol, runtime_checkable
+
+from ragtorch.core.execution_plan import ExecutionPlan
+
+
+@dataclass(frozen=True)
+class ExecutionContext:
+    """Read-only view of results produced by steps already run in this
+    execute() call, keyed by node_id. Rebuilt fresh before each step;
+    a handler cannot mutate it back into the executor's bookkeeping."""
+
+    results: Mapping[str, object]
+
+    @classmethod
+    def from_results(cls, results: Mapping[str, object]) -> "ExecutionContext":
+        return cls(results=MappingProxyType(dict(results)))
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    """Every step's output from one execute() call, keyed by node_id."""
+
+    values: Mapping[str, object]
+
+    @classmethod
+    def from_values(cls, values: Mapping[str, object]) -> "ExecutionResult":
+        return cls(values=MappingProxyType(dict(values)))
+
+
 @runtime_checkable
-class StepExecutor(Protocol):
-    """Invoke one ExecutionStep's Component with one input value.
+class StepHandler(Protocol):
+    """Caller-supplied: turns one node_id into work. The executor never
+    inspects what a handler does -- it may call a Component, a plain
+    function, or nothing at all."""
 
-    Does not resolve node_id -> Component (the caller supplies an
-    already-resolved Component). Does not schedule, retry, time out,
-    or run concurrently. Does not know about ExecutionEngine or any
-    provider. Raises ExecutionError (from the original exception, via
-    `from exc`) if the component raises, matching Module.__call__'s
-    existing convention exactly -- never returns a sentinel or
-    swallows a failure.
-    """
-
-    def execute(
-        self,
-        step: ExecutionStep,
-        component: Component[object, object],
-        input: object,
-        *,
-        context: ExecutionContext,
-    ) -> object:
-        """Invoke component(input, context=context) for the given step.
-
-        Returns the component's raw output value. Raises ExecutionError
-        (chained via `from exc`) if the component raises any exception.
-        """
-        ...
+    def __call__(self, node_id: str, context: ExecutionContext) -> object: ...
 
 
-class DefaultStepExecutor:
-    """The only StepExecutor implementation in this version: a direct,
-    synchronous call to component(input, context=context), wrapped in
-    the standard ExecutionError convention. No hidden scheduling,
-    retry, timeout, or observability -- exactly what the Protocol
-    promises and nothing more."""
+@runtime_checkable
+class Executor(Protocol):
+    """Run every step of an ExecutionPlan, in order, via handler."""
 
-    def execute(
-        self,
-        step: ExecutionStep,
-        component: Component[object, object],
-        input: object,
-        *,
-        context: ExecutionContext,
-    ) -> object:
-        try:
-            return component(input, context=context)
-        except Exception as exc:
-            raise ExecutionError(
-                f"Step {step.node_id!r} raised {type(exc).__name__}: {exc}"
-            ) from exc
+    def execute(self, plan: ExecutionPlan, handler: StepHandler) -> ExecutionResult: ...
+
+
+class SequentialExecutor:
+    """The only Executor implementation in this version: runs plan.steps
+    in order, one at a time, threading prior results forward via
+    ExecutionContext. Stateless -- retains no plan, context, or result
+    state after execute() returns. Does not catch handler exceptions:
+    a raising handler stops the plan immediately and propagates."""
+
+    def execute(self, plan: ExecutionPlan, handler: StepHandler) -> ExecutionResult:
+        results: dict[str, object] = {}
+        for step in plan.steps:
+            context = ExecutionContext.from_results(results)
+            results[step.node_id] = handler(step.node_id, context)
+        return ExecutionResult.from_values(results)
 ```
 
-`StepExecutor` is a `Protocol`, not only a concrete class, so a future
-async variant, a future instrumented variant (once `ExecutionEngine`
-integration is deliberately designed), or a test double can all
-satisfy the same contract without inheriting from `DefaultStepExecutor`
+`Executor` and `StepHandler` are `Protocol`s, not concrete classes, so
+a future async/parallel/distributed executor, or a test handler, can
+satisfy the same contract without inheriting from `SequentialExecutor`
 — matching the same structural-typing precedent `Component` (ADR-010)
 already established for this codebase.
 
-### Why `step` is a parameter even though only `step.node_id` is used
+### Why the plan is not re-validated or re-derived
 
-`DefaultStepExecutor.execute` uses only `step.node_id` (for the error
-message) today, not `step.dependencies` — but the `Protocol` accepts
-the full `ExecutionStep`, not a bare `node_id: str`, because a future
-implementation (e.g. one that validates that the supplied `input`
-actually corresponds to `step.dependencies`, or that attaches
-dependency information to a wrapped error) can use the richer object
-without changing the contract's shape. This mirrors the same
-"richer form over a bare primitive" reasoning ADR-017 applied to
-`ExecutionStep` over a plain `str`.
+`ExecutionPlan.steps` (ADR-017) already encodes a valid, acyclic,
+dependency-respecting order — `SequentialExecutor` trusts that
+guarantee rather than re-checking it, the same single-source-of-truth
+discipline every prior layer in this codebase has followed. It reads
+only `step.node_id`; `step.dependencies` is not read by
+`SequentialExecutor` itself in this version — a handler that wants a
+step's declared dependencies can be given the full `ExecutionStep` by
+its owner separately if needed, since the handler's owner (not the
+executor) is the one wiring handlers to steps.
 
-### Why failure wrapping matches `Module.__call__` exactly
+### Why failures are not wrapped here
 
-See Q11 above for the full reasoning. Concretely, `raise
-ExecutionError(f"Step {step.node_id!r} raised {type(exc).__name__}:
-{exc}") from exc` mirrors `module.py`'s `raise ExecutionError(f"Module
-'{self._name}' raised {type(exc).__name__}: {exc}") from exc` in
-every respect except substituting the step's node id for the module's
-name — this is a deliberate parallel, not a coincidence, so a reader
-already familiar with `Module`'s failure convention needs to learn
-nothing new here. `RegistryError` is not special-cased here as it is
-in `Module.__call__`, because `RegistryError` ("module registration is
-invalid") has no meaning at the `Component`/`ExecutionStep` level —
-there is no registration concept in this boundary to raise it for.
+See Q11 above.
 
-### `input` is a single opaque value, not a mapping
+### Why `ExecutionContext`/`ExecutionResult` are immutable and rebuilt, not shared
 
-See Q4 above. This is the most consequential open question in this
-ADR — deliberately not resolved by inventing an input-aggregation
-convention this ADR has no basis to justify.
+See Q4/Q9 above, and the adversarial tests in "Testing strategy" (ADV-05
+through ADV-08), which specifically target plan/context/executor
+statelessness and immutability as load-bearing properties for future
+concurrency, not merely style preferences.
 
 ## Non-goals
 
 Explicitly deferred, not part of this decision:
 
-- **A plan runner.** Nothing here walks `ExecutionPlan.steps` or
-  executes more than one step. A future `PlanRunner` (or similarly
-  named type) that does so, calling `StepExecutor.execute` once per
-  step in dependency order, is deliberately separate future work.
 - **`ExecutionEngine` integration.** `execution.py` does not import
-  `ragtorch.core.engine`; `ExecutionEngine` is not modified to accept
-  or produce a `StepExecutor`/`ExecutionStep`.
-- **Retries, timeouts, or any other invocation policy.** Explicitly
-  out of scope — see Q12/Q13.
-- **Concurrency or async execution.** Not implemented; the contract is
-  written not to foreclose either — see Q7/Q14.
-- **`node_id -> Component` resolution as part of this contract.**
-  Remains the caller's responsibility, using `CompositionGraph.nodes`
-  directly — see Q2/Q3.
-- **Multi-dependency input aggregation semantics.** How a step with
-  more than one dependency combines those outputs into one input value
-  is not decided here — see Q4.
-- **Serialization.** Not implemented; not applicable to a call-shape
-  contract — see Q15.
-- **Observability beyond re-raising a wrapped exception.** No
-  `Run`/`Trace`/`Metrics` integration — see Q16.
+  `ragtorch.core.engine`.
+- **Retries, timeouts, or any other invocation policy.** See Q12/Q13.
+- **Concurrency, async, or distributed execution.** Not implemented;
+  the `Executor`/`StepHandler` `Protocol` shapes do not foreclose
+  either — see Q7/Q9/Q14.
+- **A provider adapter or any `Component`-specific wiring.** The
+  handler is entirely caller-supplied; this ADR does not define how a
+  handler resolves `node_id -> Component`, nor does it import
+  `ragtorch.core.component` or `ragtorch.core.composition`.
+- **Serialization.** See Q15.
+- **Observability beyond ordinary exception propagation.** See Q16.
 - **A provider registry, sandboxing, or any new trust boundary.** See Q17.
 
 ## Alternatives considered
 
-- **Have the executor resolve `node_id -> Component` itself (accept a
-  `CompositionGraph` or a registry).** Rejected: would either reopen
-  `ExecutionPlan`'s explicit non-retention-of-graph decision one layer
-  up, or invent a second node-registry concept duplicating
-  `CompositionGraph.nodes` — see Q2/Q3.
-- **Accept `Mapping[str, object]` of all dependency outputs as
-  input.** Rejected: presumes an aggregation-semantics answer this ADR
-  has no basis to give, mirroring ADR-016's deliberate deferral of
-  fan-in aggregation semantics — see Q4.
-- **Preserve the original exception type unwrapped, rather than
-  wrapping in `ExecutionError`.** Rejected after finding
-  `Module.__call__`'s existing, tested convention during the 14A
-  audit: introducing a second, different failure convention for
-  conceptually the same kind of event (a component raised during
-  invocation) would be inconsistent, not merely a stylistic choice —
-  see Q11.
-- **Make `StepExecutor` a concrete base class, not a `Protocol`.**
-  Rejected: `Component` (ADR-010) already establishes structural
-  typing as this codebase's convention for "things that can be
-  swapped without inheritance"; a `Protocol` here is consistent with
-  that precedent and keeps a future async or instrumented executor
-  from being forced into an inheritance hierarchy.
-- **Introduce retry/timeout parameters now, defaulted to off.**
-  Rejected: even an off-by-default parameter freezes an API shape
-  (and a semantic promise about what "on" would mean) before any real
-  component has demonstrated what retry/timeout semantics it actually
-  needs — see Q12/Q13, and the project's standing "freeze only what
-  we have enough evidence to make stable" principle.
+- **Have the executor accept an already-resolved `Component` per step
+  (the previously-drafted `StepExecutor` design).** Superseded — see
+  "Revision note." Rejected for this revision because it could only
+  ever invoke one step, not run a plan, which is the capability this
+  step is now scoped to deliver.
+- **Wrap handler failures in `ExecutionError`, matching
+  `Module.__call__`.** Rejected for this revision — see Q11. The
+  executor no longer has a fixed "a `Component` raised" event to name,
+  since the handler is caller-supplied and opaque.
+- **Give the handler the raw internal `dict` instead of an immutable
+  `ExecutionContext`.** Rejected: allows a handler to corrupt the
+  executor's own bookkeeping, and forecloses safe reuse of the
+  executor across concurrent calls in the future — see Q4/Q9.
+- **Return results incrementally (e.g. a generator/iterator of
+  per-step results) instead of one `ExecutionResult` at the end.**
+  Rejected as a needless expansion of the contract's shape before any
+  consumer has demonstrated a need for streaming results; `plan.steps`
+  is already available to a caller that wants to observe the handler's
+  own side effects step by step.
+- **Make `Executor`/`StepHandler` concrete base classes, not
+  `Protocol`s.** Rejected: `Component` (ADR-010) already establishes
+  structural typing as this codebase's convention for "things that can
+  be swapped without inheritance."
 
 ## Security
 
-`StepExecutor.execute` (both the `Protocol` and `DefaultStepExecutor`)
-performs exactly one operation with external effect: calling
-`component(input, context=context)`. It introduces no new trust
-boundary beyond what `Module.__call__`/`ExecutionEngine.execute`
-already establish (component invocation is trusted application code),
-no dynamic import, no `eval`/`exec`, no network operation of its own,
-no deserialization, and no new credential or resource handling.
+`SequentialExecutor.execute` performs no operation with external
+effect itself — it only calls the caller-supplied `handler`, whose
+behavior is entirely outside this module's control, exactly as
+`Module.__call__` already treats component invocation as trusted
+application code. No dynamic import, no `eval`/`exec`, no network
+operation, no deserialization, no new credential handling. No
+automatic logging of `context.results` or `result.values` — those may
+contain sensitive data produced by handlers this module knows nothing
+about.
 
 ## Dependency review
 
 Zero new runtime dependencies. `execution.py` imports
-`ragtorch.core.component` (`Component`), `ragtorch.core.context`
-(`ExecutionContext`), `ragtorch.core.errors` (`ExecutionError`),
-`ragtorch.core.execution_plan` (`ExecutionStep`), and the standard
-library `typing` (`Protocol`, `runtime_checkable`) — no `networkx`, no
-scheduler/workflow package, no provider SDK.
+`ragtorch.core.execution_plan` (`ExecutionPlan`), and the standard
+library (`dataclasses`, `types.MappingProxyType`, `typing`) — no
+`ragtorch.core.component`, no `ragtorch.core.composition`, no
+`ragtorch.core.engine`, no provider SDK.
 
 ## Compatibility
 
 No changes to `Component`, `Module`, `Sequential`, `ExecutionEngine`,
-`ExecutionContext`, `ArchitectureSnapshot`, `CompositionGraph`,
-`GraphNode`, `Connection`, `ExecutionPlan`, `ExecutionStep`, or `plan()`
-themselves. `StepExecutor`/`DefaultStepExecutor` are a pure addition,
-in a new module.
+`ArchitectureSnapshot`, `CompositionGraph`, `GraphNode`, `Connection`,
+`ExecutionPlan`, `ExecutionStep`, or `plan()` themselves. `Executor`,
+`StepHandler`, `ExecutionContext`, `ExecutionResult`, and
+`SequentialExecutor` are a pure addition in a new module. Note:
+`ExecutionContext` here is a distinct type from the identically-named
+`ragtorch.core.context.ExecutionContext` (run identity/metadata,
+ADR-002) — both are frozen dataclasses named `ExecutionContext` but
+serve unrelated purposes at different layers; this name collision is
+addressed explicitly in "Compatibility risk" below.
+
+### Compatibility risk: `ExecutionContext` name collision
+
+`ragtorch.core.context.ExecutionContext` (run_id, parent_run_id,
+metadata) already exists and is exported publicly. This ADR introduces
+a second, unrelated `ExecutionContext` (results mapping only) in
+`ragtorch.core.execution`. Both are not exported under the same public
+name simultaneously — `ragtorch.core.execution.ExecutionContext` is
+**not** added to `ragtorch.core.__all__`/`ragtorch.__all__` under the
+bare name `ExecutionContext`; callers that need both types import them
+from their distinct modules explicitly
+(`ragtorch.core.context.ExecutionContext` vs.
+`ragtorch.core.execution.ExecutionContext`), and any public re-export
+uses an unambiguous alias. The exact export decision is finalized
+during implementation (14E) and recorded in the requirements matrix
+evidence for A66, not left implicit.
 
 ## Testing strategy
 
-- Unit: `DefaultStepExecutor.execute` invokes a fake `Component` with
-  the given input and context, and returns its raw output unmodified.
-- Unit: `context` is passed through to `component(...)` exactly as
-  given (identity-checked, not merely equality-checked).
-- Unit: `input` is passed through to `component(...)` exactly as given.
-- Unit: a component whose `__call__` raises `ValueError` results in
-  `ExecutionError` being raised, with the original `ValueError`
-  accessible as `exc.__cause__` and the step's `node_id` present in
-  the message (mirroring `Module.__call__`'s existing test pattern in
-  `test_module.py`/`test_engine.py`).
-- Unit: `DefaultStepExecutor` does not swallow any exception type,
-  including `RAGTorchError` subclasses raised by the component itself
-  (they are still wrapped in `ExecutionError`, not re-raised as-is —
-  no `RegistryError`-style special case exists at this layer, unlike
-  `Module.__call__`, since `RegistryError` has no meaning here).
-- Contract: a component satisfying only the `Component` `Protocol`
-  (no inheritance from `Module` or any `ragtorch` base class) works
-  identically to a `Module`-based component through `StepExecutor`,
-  reusing the same non-`Module` test-double pattern ADR-010 already
-  established.
-- Contract: `DefaultStepExecutor` itself satisfies the `StepExecutor`
-  `Protocol` (`isinstance(DefaultStepExecutor(), StepExecutor)`).
-- Failure: missing/`None` `context` is rejected by the type contract
-  (no `context: ExecutionContext | None = None` default here, unlike
-  `Component.__call__`) — a caller must always supply an explicit
-  context, since a step executor has no reasonable "no context" case
-  the way a bare `Module` call might.
-- Provider-independence: no provider import in `execution.py`
-  (AST-based check, reusing the established pattern).
-- No `ExecutionEngine` import: dedicated AST-based check, reusing the
-  pattern established in Step 13's `test_execution_plan_module_does_not_import_execution_engine`.
+- Unit: `SequentialExecutor.execute` on an empty plan
+  (`ExecutionPlan(steps=())`) returns `ExecutionResult(values={})`
+  without calling `handler`.
+- Unit: single-step plan — handler is called once with that step's
+  `node_id`, and `result.values` contains exactly that one entry.
+- Unit: multi-step plan — handler is called once per step, in
+  `plan.steps` order (verified via a recording fake handler).
+- Unit: a later step's handler call receives a `context.results`
+  containing every earlier step's already-computed value, keyed by
+  `node_id`.
+- Unit: `result.values` contains exactly one entry per step, keyed by
+  `node_id`, with no duplicates and no missing steps.
+- Immutability: `context.results[...] = ...` raises `TypeError` (or
+  the `MappingProxyType` equivalent).
+- Immutability: `result.values[...] = ...` raises `TypeError`.
+- Failure: if `handler` raises for some step, the exception propagates
+  unmodified out of `execute`, and no handler call happens for any
+  step after the failing one (verified via a recording fake handler
+  that would record a call it must never actually receive).
+- Contract: `SequentialExecutor` satisfies the `Executor` `Protocol`
+  (`isinstance(SequentialExecutor(), Executor)`).
+- Contract: a plain function or lambda satisfying `StepHandler`'s call
+  shape works identically to a class-based handler.
+- **ADV-05 — plan is not mutated.** `plan == plan_before_execute` (and
+  `plan.steps is plan.steps`, i.e. no in-place modification) after
+  `execute` returns.
+- **ADV-06 — executor retains no plan.** After `execute` returns, the
+  `SequentialExecutor` instance holds no attribute referencing the
+  plan (inspected via `vars(executor)` being empty, or equivalent).
+- **ADV-07 — executor retains no context/results.** Same check for any
+  `ExecutionContext`/results state.
+- **ADV-08 — provider independence.** AST-based check: `execution.py`
+  imports nothing from `ragtorch.core.component`,
+  `ragtorch.core.composition`, `ragtorch.core.engine`, or any provider
+  package.
 - Regression: `CompositionGraph`, `ExecutionPlan`, `Sequential`,
-  `ExecutionEngine`, `ExecutionContext`, and `Component` are all
-  unmodified — the full pre-existing test suite passes unmodified.
+  `ExecutionEngine`, `ragtorch.core.context.ExecutionContext`, and
+  `Component` are all unmodified — the full pre-existing test suite
+  passes unmodified.
 
 ## Benchmark strategy
 
-Per ADR-009, `benchmarks/step14_execution_boundary.py`. Measures a raw
-`component(input, context=context)` call against
-`DefaultStepExecutor.execute(step, component, input, context=context)`
-for the same component, at increasing call counts (1/10/100/1,000/10,000
-where meaningful), reporting the overhead the wrapping adds (expected:
-small and roughly constant per call — one `try`/`except` frame and one
-`ExecutionStep` attribute access on the success path). No hard
-threshold asserted, consistent with prior benchmarks' methodology; a
-benchmark shows measurements consistent (or not) with an overhead
-claim, it does not prove one.
+Per ADR-009, `benchmarks/step14_execution_boundary.py`. Measures
+`SequentialExecutor.execute` against a trivial handler
+(`lambda node_id, context: node_id`) over plans of increasing step
+count (10/100/1,000/10,000), reporting wall-clock time. This
+establishes a baseline for future `AsyncExecutor`/`ParallelExecutor`
+comparisons — it does not claim or prove an asymptotic complexity
+bound, only reports measurements consistent (or not) with one,
+following the same corrected methodology adopted for Step 13's
+benchmark and evaluation report.
 
 ## Consequences
 
-- A future `PlanRunner` has a ready-made, already-tested single-step
-  invocation boundary to call once per `ExecutionStep`, without
-  needing to invent component-invocation-plus-failure-wrapping itself.
-- The failure-handling story across the framework stays uniform:
-  `Module.__call__` and `StepExecutor.execute` both raise
-  `ExecutionError` via `from exc` for the same conceptual event (a
-  component/module raised during invocation) — one convention, not two.
-- Scope stays deliberately narrow: no plan runner, no
-  `ExecutionEngine` integration, no retries, no timeouts, no
-  concurrency, no input-aggregation semantics — consistent with every
-  prior step's discipline, and explicitly informed by a code-grounded
-  18-question audit rather than an untested draft preference (see Q11
-  for the one place that audit changed the intended design).
+- Step 14 delivers a genuine plan-runner boundary: any caller with an
+  `ExecutionPlan` and a way to turn a `node_id` into work can run the
+  whole plan today, without waiting on `ExecutionEngine` integration
+  or a provider adapter.
+- Provider independence is structural: `execution.py` cannot import
+  `Component`, `CompositionGraph`, or any provider, by construction —
+  enforced by ADV-08, not merely by convention.
+- The executor's statelessness and immutable
+  `ExecutionContext`/`ExecutionResult` are deliberately chosen now so a
+  future concurrent executor does not have to retrofit these
+  properties under a compatibility constraint.
+- Failure semantics are deliberately *not* unified with
+  `Module.__call__`'s `ExecutionError` wrapping in this version — a
+  considered trade-off (Q11), not an oversight; a handler that wants
+  `ExecutionError` semantics raises one itself.
+- Scope stays deliberately narrow: no `ExecutionEngine` integration, no
+  retries, no timeouts, no concurrency, no provider adapter —
+  consistent with every prior step's discipline.
