@@ -2,7 +2,20 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Accepted after real GitHub Actions post-merge CI confirmed on the
+actual merged `main` SHA — not from PR CI or local checks alone, per
+this project's standing rule that "PR green is not proof." Evidence
+trail:
+
+- PR #22 (initial contract freeze + circular-import correction found
+  during 17D): merged `e056b06`, post-merge CI run
+  [31985560271](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31985560271),
+  406/406 on 3.10/3.11/3.12.
+- PR #23 (implementation): merged `419f643`, post-merge CI run
+  [31992874525](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31992874525),
+  431/431 on 3.10/3.11/3.12, lint clean, on commit `419f643`.
 
 ## Context
 

@@ -312,18 +312,50 @@ phase. No touch to `block.py`, `sequential.py`, `component.py`,
 
 ## Decision
 
-**Step 17 implementation Definition of Done: met locally** (Python
-3.10 and 3.12 both verified, 431/431, lint/format/mypy clean, `module.py`
-99% coverage with only pre-existing uncovered lines). ADR-021's status
-remains `Proposed` and A69's evidence remains local-only until real CI
-confirms it — per the project's standing rule that local checks are
-not CI, and per Steps 13-16's precedent that an ADR is flipped to
-`Accepted` only after independent post-merge CI confirmation on the
-actual merged `main` SHA.
+**Step 17 implementation Definition of Done: met and confirmed by
+real CI.** Local verification (431/431 on Python 3.10 and 3.12,
+lint/format/mypy clean) was independently confirmed by GitHub Actions
+PR CI (run `31992790880`, 431/431 on 3.10/3.11/3.12) and, critically,
+by **post-merge CI on the actual merged `main` SHA** (run
+`31992874525`, commit `419f643`, 431/431 on 3.10/3.11/3.12) — not
+claimed from local checks or PR-green alone, per the project's
+standing rule that "PR green is not proof." The compatibility check
+(zero changes to any protected runtime file) and dependency check
+(zero new dependencies) were both re-verified directly against the
+CI-confirmed branch, not merely asserted. ADR-021's status is flipped
+to Accepted only on the basis of this post-merge evidence (see
+ADR-021 "Status").
 
 ## Completion record
 
-Pending PR creation (docs-only ADR-021 + A69, then a separate
-implementation PR, matching Steps 13-16's exact discipline), PR CI,
-merge, and post-merge CI on `main` for both — this section is
-completed only after all of those are independently confirmed.
+| Field | Value |
+| --- | --- |
+| Step | 17 — Graph-backed RAGModule Architecture |
+| Architectural decision | ADR-021 |
+| Requirement | A69 (fulfills A3, open since Step 1) |
+| Implementation | `RAGModule.from_graph` / `_GraphBackedRAGModule` — `src/ragtorch/core/module.py` |
+| Tests | 431 (406 pre-existing, unmodified + 21 unit + 4 integration) |
+| CI | Python 3.10 / 3.11 / 3.12 — all pass |
+| Benchmark | Completed (`benchmarks/step17_ragmodule_architecture.py`, 3/10/30-node chains, measuring the additional `Module.__call__` layer's overhead over calling `Block` directly) |
+| Evaluation | Completed (this document) |
+| PR #22 merge SHA (ADR-021 initial contract + circular-import correction) | `e056b0689ea66db02c0570cb71b43ab45d61ff47` |
+| PR #23 merge SHA (implementation) | `419f6434b97d80ed17e69b2f98613a105420144f` |
+| Post-merge `main` CI run (final) | [31992874525](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31992874525) — 431/431 on 3.10/3.11/3.12, lint clean, on commit `419f643` |
+| Status | **COMPLETE** |
+
+Marked COMPLETE only after post-merge `main` CI passed on the final
+merge commit — not from PR CI, not from local checks. Four review
+findings were caught and corrected before/during implementation, none
+silently absorbed: `class RAGModule(Block)` rejected outright (breaks
+the existing, tested subclass pattern); a double-registration hazard
+in the private adapter; a false single-hop failure-identity assumption
+in this ADR's own first draft, corrected to match `Module.__call__`'s
+actual, existing, universal wrapping convention; and a circular-import
+hazard found only during implementation itself, resolved via a
+deferred import mirroring an already-established pattern in the same
+file. A final compatibility re-check before merge confirmed zero
+changes to any protected runtime file
+(`block.py`/`sequential.py`/`component.py`/`composition.py`/
+`connection.py`/`ports.py`/`execution_plan.py`/`execution.py`/
+`engine.py`/`context.py`) and zero new dependencies — consistent with
+ADR-021's additive-only scope.
