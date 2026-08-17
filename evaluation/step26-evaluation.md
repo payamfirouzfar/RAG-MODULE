@@ -426,7 +426,24 @@ explicitly rejects doing.
 
 ## Phase 16 — Git / CI evidence
 
-(Filled in after real GitHub-facing work completes — see below.)
+- Branch: `audit/step26-rag-architecture-boundary`
+- PR: [#33](https://github.com/payamfirouzfar/RAG-MODULE/pull/33)
+- PR CI run [32076262955](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32076262955)
+  at commit `260ce7c` — **all 6 jobs succeeded** on first attempt (`test` × {3.10, 3.11,
+  3.12}, `packaging` × {3.10, 3.11, 3.12}; packaging jobs unaffected since no packaging
+  files changed, confirmed still green).
+- PR diff scope verified via `gh pr view --json files` immediately before merge: exactly
+  `docs/architecture/requirements-matrix-v0.1.md` and `evaluation/step26-evaluation.md`
+  — no `src/ragtorch/**` changes.
+- Merged via `gh pr merge 33 --merge`. Merge SHA verified directly via
+  `gh pr view --json mergeCommit`: **`2d849d0a992a19012326d138fa5146d5a276cc2e`**.
+- Post-merge CI run [32076450515](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32076450515)
+  on `main`, head SHA confirmed as the exact merge commit `2d849d0` — **all 6 jobs
+  succeeded**:
+  - `test (3.10)`, `test (3.11)`, `test (3.12)`: **528 passed, 11 deselected** each.
+  - `packaging (3.10)`, `packaging (3.11)`, `packaging (3.12)`: **11 passed** each.
+- Local branch fast-forwarded to `2d849d0` (`git checkout main && git pull`), confirmed
+  via `git log --oneline -3`.
 
 ## Unresolved risks
 
