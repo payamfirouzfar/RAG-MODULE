@@ -16,7 +16,7 @@ from ragtorch.core.errors import (
     RegistryError,
     ValidationError,
 )
-from ragtorch.core.events import Event, EventBus, EventType
+from ragtorch.core.events import Event, EventBus, EventScope, EventType
 from ragtorch.core.execution import (
     Executor,
     SequentialExecutor,
@@ -91,5 +91,6 @@ __all__ = [
     "Event",
     "EventType",
     "EventBus",
+    "EventScope",
     "event_bus",
 ]

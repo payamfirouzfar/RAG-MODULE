@@ -87,6 +87,7 @@ from ragtorch.core import (
     Connection,
     Event,
     EventBus,
+    EventScope,
     EventType,
     ExecutionContext,
     ExecutionEngine,
@@ -186,5 +187,6 @@ __all__ = [
     "Event",
     "EventType",
     "EventBus",
+    "EventScope",
     "event_bus",
 ]

@@ -138,42 +138,47 @@ class Module:
 
         run_id = context.run_id
         parent_run_id = context.parent_run_id
-        _bus.publish(
-            Event(
-                EventType.MODULE_STARTED,
-                self._name,
-                run_id=run_id,
-                parent_run_id=parent_run_id,
-            )
+        scope = context.event_scope
+
+        started = Event(
+            EventType.MODULE_STARTED,
+            self._name,
+            run_id=run_id,
+            parent_run_id=parent_run_id,
         )
+        _bus.publish(started)
+        if scope is not None:
+            scope.publish(started)
         try:
             if _forward_accepts_context(type(self)):
                 result = self.forward(input, context=context)
             else:
                 result = self.forward(input)
         except Exception as exc:
-            _bus.publish(
-                Event(
-                    EventType.MODULE_FAILED,
-                    self._name,
-                    payload={"error": str(exc)},
-                    run_id=run_id,
-                    parent_run_id=parent_run_id,
-                )
+            failed = Event(
+                EventType.MODULE_FAILED,
+                self._name,
+                payload={"error": str(exc)},
+                run_id=run_id,
+                parent_run_id=parent_run_id,
             )
+            _bus.publish(failed)
+            if scope is not None:
+                scope.publish(failed)
             if isinstance(exc, RegistryError):
                 raise
             raise ExecutionError(
                 f"Module '{self._name}' raised {type(exc).__name__}: {exc}"
             ) from exc
-        _bus.publish(
-            Event(
-                EventType.MODULE_FINISHED,
-                self._name,
-                run_id=run_id,
-                parent_run_id=parent_run_id,
-            )
+        finished = Event(
+            EventType.MODULE_FINISHED,
+            self._name,
+            run_id=run_id,
+            parent_run_id=parent_run_id,
         )
+        _bus.publish(finished)
+        if scope is not None:
+            scope.publish(finished)
         return result
 
     def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
