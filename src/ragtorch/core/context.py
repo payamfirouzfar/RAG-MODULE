@@ -15,7 +15,10 @@ import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ragtorch.core.events import EventScope
 
 
 def new_run_id() -> str:
@@ -35,6 +38,7 @@ class ExecutionContext:
     run_id: str = field(default_factory=new_run_id)
     parent_run_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    event_scope: EventScope | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
@@ -44,11 +48,13 @@ class ExecutionContext:
 
         The child gets a fresh run_id, records this context's run_id as
         its parent_run_id, and merges any additional metadata on top of
-        the parent's.
+        the parent's. event_scope is propagated unchanged -- the same
+        object (see ADR-022), not a new one.
         """
         merged = {**self.metadata, **metadata}
         return ExecutionContext(
             run_id=new_run_id(),
             parent_run_id=self.run_id,
             metadata=merged,
+            event_scope=self.event_scope,
         )

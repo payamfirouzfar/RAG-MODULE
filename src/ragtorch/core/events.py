@@ -56,3 +56,36 @@ class EventBus:
             event.module_name,
             event.run_id,
         )
+
+
+class EventScope:
+    """Execution-scoped event delivery (ADR-022).
+
+    Distinct from the global, process-wide EventBus (event_bus()). A
+    caller constructs an EventScope, subscribes listeners to it, and
+    passes it via ExecutionContext(event_scope=...) to observe only
+    that execution's (and its nested children's) events, without
+    affecting or being affected by the global bus.
+
+    Structurally identical to EventBus and consumes the same
+    EventListener callable, but is a distinct type, not a subclass, so
+    the two are never interchangeable by accident. Not thread-safe; a
+    raising listener propagates from publish() unmodified -- both
+    match EventBus's existing, unmodified behavior exactly. There is
+    no module-level default instance, no contextvars binding, and no
+    thread-local singleton -- an EventScope exists only where a caller
+    explicitly constructs one.
+    """
+
+    def __init__(self) -> None:
+        self._listeners: list[EventListener] = []
+
+    def subscribe(self, listener: EventListener) -> None:
+        self._listeners.append(listener)
+
+    def unsubscribe(self, listener: EventListener) -> None:
+        self._listeners.remove(listener)
+
+    def publish(self, event: Event) -> None:
+        for listener in self._listeners:
+            listener(event)

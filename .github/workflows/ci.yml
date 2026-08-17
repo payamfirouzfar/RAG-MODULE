@@ -53,5 +53,14 @@ jobs:
           name: step5-event-context-overhead-py${{ matrix.python-version }}
           path: step5_event_context_overhead.txt
 
+      - name: Step 18 performance benchmark
+        run: python benchmarks/step18_execution_scoped_events.py | tee step18_execution_scoped_events.txt
+
+      - name: Upload Step 18 benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: step18-execution-scoped-events-benchmark-py${{ matrix.python-version }}
+          path: step18_execution_scoped_events.txt
+
       - name: Build package
         run: pip install build && python -m build
