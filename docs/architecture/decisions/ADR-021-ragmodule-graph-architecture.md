@@ -236,6 +236,20 @@ private adapter class, not a new runtime type.
 
 ### Public contract
 
+**A fourth finding, caught during 17D implementation (not 17C
+drafting)**: `block.py` already imports `from ragtorch.core.module
+import Module` at module level (`Block` inherits `Module`). Adding a
+module-level `from ragtorch.core.block import Block` to `module.py`
+would create a genuine circular import, failing at interpreter import
+time — not merely a style concern. `import Block` inside `from_graph`
+itself (a deferred/lazy import) resolves this with zero risk, and
+mirrors an already-established pattern in this exact file:
+`Module.snapshot()` already does `from ragtorch.core.inspection import
+snapshot as _snapshot` inside its own method body for the same reason
+(`inspection.py` needs `Module` for its type surface). This is
+reflected in the contract below — `Block` is imported inside
+`from_graph`, not at module scope.
+
 ```python
 class RAGModule(Module):
     """Marker base class for top-level, RAG-specific systems.
@@ -263,6 +277,11 @@ class RAGModule(Module):
         promised to work on an arbitrary RAGModule subclass in this
         version -- see ADR-021 Q3.
         """
+        from ragtorch.core.block import Block  # deferred: avoids a
+        # circular import with block.py's own module-level "from
+        # ragtorch.core.module import Module" -- mirrors
+        # Module.snapshot()'s existing lazy-import pattern in this file.
+
         block = Block(graph, input_node=input_node, output_node=output_node)
         return _GraphBackedRAGModule(block)
 
@@ -270,7 +289,14 @@ class RAGModule(Module):
 class _GraphBackedRAGModule(RAGModule):
     """Private adapter: a RAGModule that delegates forward() to a
     Block. Not part of the public API -- construct via
-    RAGModule.from_graph(), never directly."""
+    RAGModule.from_graph(), never directly.
+
+    __init__'s `block: Block` annotation is safe without a runtime
+    import: module.py already uses `from __future__ import
+    annotations` (PEP 563), so annotations are strings, never
+    evaluated at import time. Block is imported under TYPE_CHECKING
+    for the type checker only -- see the module-level import block
+    below."""
 
     def __init__(self, block: Block) -> None:
         super().__init__()
