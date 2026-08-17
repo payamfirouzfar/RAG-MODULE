@@ -1,16 +1,20 @@
 # Step 24 Evaluation — Architecture Gap Discovery & A16 Automated Enforcement
 
-Date: 2026-08-17 (Phases 0-11, local) — pending CI/merge
+Date: 2026-08-17 (Phases 0-11, local) — closed 2026-08-17 (post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
 
 This step is a discovery/priority audit that concluded **Outcome B**:
 a single, narrowly-scoped candidate (A16, automated enforcement of the
 Component hot-path rule) had sufficient real evidence to justify
-implementation, while every other candidate investigated had none.
-Remaining: push, PR, CI, merge, post-merge CI, final closure.
+implementation, while every other candidate investigated had none. PR
+#31 merged as `d0fde24`; post-merge CI on `main` confirmed 528/528 on
+3.10/3.11/3.12 (run
+[32066462641](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32066462641)).
+Requirements matrix A76 added. See the Closure section at the end of
+this document for the full gate-by-gate record.
 
 ## Evidence vocabulary
 
@@ -267,13 +271,89 @@ git status --short (pre-commit):
 Exactly one file changed, matching the design decision precisely — no
 production code, no unrelated cleanup, no accidental changes.
 
+## CI
+
+**PR CI**: run [32066320466](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32066320466),
+`test (3.10)`/`test (3.11)`/`test (3.12)` all `success`, 528/528, on
+head SHA `fb0188b`. Passed on the first attempt.
+
 ## Closure
 
-Pending: push, PR, CI (3.10/3.11/3.12), merge, post-merge CI
-verification, final closure record. Whether a new requirements-matrix
-row (A76) is warranted will be decided during closure, following the
-A68-A75 append-only convention (a new row cross-referencing A16, not
-editing its historically-frozen text).
+### Merge
+
+PR #31 (`feat/step24-component-hotpath-enforcement` → `main`) merged
+via `gh pr merge 31 --merge` after confirming `MERGEABLE`/
+`mergeStateStatus: CLEAN` on head SHA `fb0188b` with all three checks
+green. Merge commit verified directly (not trusted from PR metadata
+alone): **`d0fde24dfe24357f6600aefa7ff9464d0d94b38a`**.
+
+### Post-merge CI
+
+Run [32066462641](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32066462641),
+`push` trigger, `headSha` confirmed as `d0fde24` (the actual merge
+commit, via `gh run view --json headSha`). Per-job conclusions
+individually verified: `test (3.10)`/`test (3.11)`/`test (3.12)` all
+`success`, **528/528 passed on every version**.
+
+### Documentation closure
+
+Added **A76** to the requirements matrix, following the A68-A75
+convention (a new append-only row cross-referencing A16, not editing
+its historically-frozen text).
+
+### Final diff/scope review
+
+```
+git diff main...feat/step24-component-hotpath-enforcement --stat (pre-merge):
+ evaluation/step24-evaluation.md       | 300+
+ tests/unit/core/test_component.py     |  85 ++++
+```
+
+`src/ragtorch/core/module.py`, `engine.py`, `sequential.py`, `block.py`
+— confirmed zero changes via
+`git diff main...feat/step24-component-hotpath-enforcement -- src/`
+returning empty output. Exactly the expected footprint: one new test
+file's additions plus the evaluation ledger, zero production code.
+
+### Closure gate
+
+```
+□ Repository state verified (Phase 0)    PASS — main SHA, CI, open PR/issues, all confirmed via gh
+□ Architectural source read (Phase 1)      PASS — matrix, architecture doc, relevant ADRs
+□ Gap inventory (Phase 2)                    PASS — 12+ candidates classified with basis
+□ Real-consumer audit (Phase 3)                PASS — every candidate checked via direct source search
+□ Candidate ranking (Phase 4)                    PASS — evidence-based, not intuition
+□ Adversarial review (Phase 5)                     PASS — 17-item checklist against A16
+□ Design-space comparison (Phase 6)                  PASS — 4 approaches compared
+□ Decision (Phase 7)                                   PASS — Outcome B, reasoned
+□ Public contract (Phase 8)                              PASS — scoped precisely in test docstrings
+□ Implementation (Phase 9)                                 PASS — 6 tests, self-verified against real source
+□ Benchmark (Phase 10)                                       PASS — explicitly reasoned N/A, not skipped
+□ Compatibility                                                PASS — zero API/behavior change
+□ Security                                                       PASS — N/A across every category, reasoned
+□ Dependencies                                                     PASS — zero new, stdlib only
+□ CI executed (PR)                                                   PASS — run 32066320466
+□ CI executed (post-merge)                                             PASS — run 32066462641
+□ Documentation                                                          PASS — A76 added
+□ Diff review                                                              PASS — final diff/scope review above
+□ No accidental changes                                                     PASS
+
+ALL PASS → COMPLETE
+```
+
+**Step 24 status: COMPLETE.**
+
+**Precise conclusion, exactly as required, not paraphrased:** *A
+12-candidate architecture gap audit found only one candidate (A16)
+with real evidence justifying implementation — every other candidate
+investigated (provider/model/storage contracts, routing/fallback,
+evaluation-gating, snapshot serialization, plugin boundary) has zero
+real, synthetic, or planned-in-code consumer. A16's Component hot-path
+rule now has automated regression enforcement, closing a real gap
+between a documented invariant and its actual protection.* A61,
+`EVT-RACE-001`, and `EVT-REENTRANT-001` remain open and Deferred,
+re-confirmed as correctly untouched by this step's own audit rather
+than silently reopened.
 
 ## Flagged for user attention (not acted upon)
 
