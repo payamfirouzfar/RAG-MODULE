@@ -76,6 +76,8 @@ vector-store integrations live here; those are built on top of this
 foundation in later steps.
 """
 
+from importlib import metadata as _metadata
+
 from ragtorch.core import (
     ArchitectureChild,
     ArchitectureNode,
@@ -133,7 +135,14 @@ from ragtorch.core import (
     validate_snapshot,
 )
 
-__version__ = "0.4.0"
+try:
+    __version__ = _metadata.version("ragtorch")
+except _metadata.PackageNotFoundError:
+    # Only reachable when ragtorch is imported from source without being
+    # installed at all (neither editable nor a real install) -- every
+    # supported install path (pip install -e, wheel install) registers
+    # package metadata, so this is not expected in normal use.
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     "__version__",

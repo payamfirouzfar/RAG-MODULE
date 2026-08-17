@@ -165,6 +165,54 @@ def test_installed_package_is_functional_end_to_end(clean_env_python: Path) -> N
     assert result.stdout == "OK"
 
 
+def test_execution_engine_works_from_clean_install(clean_env_python: Path) -> None:
+    """Step 28 gap fix: the prior functional smoke test only exercised
+    Module/Sequential -- ExecutionEngine (Run/Trace/Metrics) and the
+    evaluation API were never actually run against the installed
+    artifact, only imported (test_documented_public_api_imports_from_
+    clean_install). This runs ExecutionEngine.execute() for real,
+    outside the source checkout."""
+    code = (
+        "from ragtorch import ExecutionEngine, Module, ObservabilityLevel, RunStatus\n"
+        "\n"
+        "class Doubler(Module):\n"
+        "    def forward(self, input):\n"
+        "        return input * 2\n"
+        "\n"
+        "engine = ExecutionEngine(level=ObservabilityLevel.DEBUG)\n"
+        "result = engine.execute(Doubler(), 21)\n"
+        "assert result.output == 42, result.output\n"
+        "assert result.run.status == RunStatus.SUCCEEDED, result.run.status\n"
+        "assert result.trace is not None\n"
+        "print('OK', end='')\n"
+    )
+    result = _run_in_clean_env(clean_env_python, code)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "OK"
+
+
+def test_evaluation_api_works_from_clean_install(clean_env_python: Path) -> None:
+    """Step 28 gap fix: ragtorch.evaluation was never actually exercised
+    against the installed artifact, only imported. Runs a real
+    Evaluator.evaluate() call outside the source checkout."""
+    code = (
+        "from ragtorch.evaluation import EvaluationCase, Evaluator, ExactMatch\n"
+        "\n"
+        "cases = [\n"
+        "    EvaluationCase(input=1, expected=1, name='case-1'),\n"
+        "    EvaluationCase(input=2, expected=2, name='case-2'),\n"
+        "]\n"
+        "result = Evaluator([ExactMatch()]).evaluate(lambda x: x, cases)\n"
+        "assert result.case_count == 2, result.case_count\n"
+        "assert result.error_count == 0, result.error_count\n"
+        "assert result.mean('exact_match') == 1.0, result.mean('exact_match')\n"
+        "print('OK', end='')\n"
+    )
+    result = _run_in_clean_env(clean_env_python, code)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "OK"
+
+
 def test_ragtorch_file_location_is_the_installed_site_packages_not_the_checkout(
     clean_env_python: Path,
 ) -> None:

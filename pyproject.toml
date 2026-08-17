@@ -4,20 +4,23 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ragtorch"
-version = "0.4.0"
-description = "A modular framework kernel for building RAG systems."
+version = "0.5.0"
+description = "A modular, provider-independent execution kernel for building composable RAG systems."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "ragtorch contributors" }]
+keywords = ["rag", "retrieval-augmented-generation", "framework", "execution-kernel", "composability"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Typing :: Typed",
 ]
 dependencies = []
 
@@ -33,6 +36,9 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/payamfirouzfar/RAG-MODULE"
+Repository = "https://github.com/payamfirouzfar/RAG-MODULE"
+Issues = "https://github.com/payamfirouzfar/RAG-MODULE/issues"
+Changelog = "https://github.com/payamfirouzfar/RAG-MODULE/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ragtorch"]

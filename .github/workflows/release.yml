@@ -1,0 +1,176 @@
+name: Release
+
+# Deliberately separate from ci.yml (Step 28 Phase 7): CI validation must
+# never publish, and publication must never be triggerable by a pull
+# request. This workflow only runs on a `v*` tag push (a maintainer
+# deliberately creating a release) or an explicit manual dispatch -- a
+# normal PR merge to main does not fire it.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      confirm_publish:
+        description: 'Type "publish" to actually publish to PyPI (any other value only builds and validates)'
+        required: true
+        default: "no"
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build + validation tooling
+        run: pip install build pytest "tomli>=2.0; python_version < '3.11'"
+
+      - name: Build wheel and sdist
+        run: python -m build --outdir dist .
+
+      - name: Verify built version matches the git tag (tag-triggered runs only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python -c "
+          import glob, tomllib
+          from pathlib import Path
+
+          pyproject = tomllib.loads(Path('pyproject.toml').read_text())
+          pyproject_version = pyproject['project']['version']
+
+          tag = '${{ github.ref_name }}'
+          assert tag == f'v{pyproject_version}', (
+              f'git tag {tag!r} does not match pyproject.toml version '
+              f'{pyproject_version!r} -- refusing to publish a mismatched release'
+          )
+
+          wheel = glob.glob('dist/*.whl')[0]
+          assert pyproject_version in wheel, f'{wheel} does not contain expected version'
+          print(f'tag {tag} matches pyproject.toml version {pyproject_version}')
+          "
+
+      - name: Inspect built artifacts
+        run: |
+          ls -la dist/
+          python -c "
+          import glob, zipfile
+          wheel = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(wheel) as z:
+              names = z.namelist()
+          assert not any(n.startswith('tests/') for n in names), 'wheel must not contain tests'
+          assert not any('.claude' in n for n in names), 'wheel must not contain local dev tooling'
+          assert not any('__pycache__' in n for n in names), 'wheel must not contain bytecode caches'
+          assert not any(n.endswith(('.pyc', '.pyo')) for n in names), 'wheel must not contain compiled files'
+          print(f'wheel contains {len(names)} entries, all checks passed')
+          "
+
+      - name: Clean-install the built wheel into a fresh environment
+        run: |
+          python -m venv /tmp/release-clean-env
+          /tmp/release-clean-env/bin/python -m pip install --quiet dist/*.whl
+
+      - name: Public-package smoke test (outside the repository checkout)
+        run: |
+          cd /tmp
+          /tmp/release-clean-env/bin/python -c "
+          import ragtorch
+          assert 'site-packages' in ragtorch.__file__
+
+          from ragtorch import ExecutionEngine, Module, ObservabilityLevel, RunStatus, Sequential
+          from ragtorch.evaluation import EvaluationCase, Evaluator, ExactMatch
+
+          class UpperCase(Module):
+              def forward(self, input):
+                  return input.upper()
+
+          class Reverse(Module):
+              def forward(self, input):
+                  return input[::-1]
+
+          pipeline = Sequential(UpperCase(), Reverse())
+          assert pipeline('hello') == 'OLLEH'
+
+          engine = ExecutionEngine(level=ObservabilityLevel.DEBUG)
+          result = engine.execute(pipeline, 'hello')
+          assert result.output == 'OLLEH'
+          assert result.run.status == RunStatus.SUCCEEDED
+
+          cases = [EvaluationCase(input=1, expected=1), EvaluationCase(input=2, expected=2)]
+          eval_result = Evaluator([ExactMatch()]).evaluate(lambda x: x, cases)
+          assert eval_result.mean('exact_match') == 1.0
+
+          print('ragtorch', ragtorch.__version__, 'release candidate smoke test passed')
+          "
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+
+  publish:
+    needs: build-and-validate
+    runs-on: ubuntu-latest
+    # Only publish on an actual tag push, or an explicit manual dispatch
+    # where the operator typed the confirmation phrase -- never on any
+    # other trigger, and never automatically just because CI is green.
+    if: |
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_publish == 'publish')
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ragtorch/
+    permissions:
+      id-token: write # required for PyPI Trusted Publishing (OIDC) -- no API token stored in secrets
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist/
+
+      - name: Publish to PyPI via Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+
+  verify-publication:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Wait for PyPI index to reflect the new release
+        run: sleep 30
+
+      - name: Install ragtorch from PyPI in a clean environment and smoke test
+        run: |
+          python -m venv /tmp/pypi-verify-env
+          /tmp/pypi-verify-env/bin/python -m pip install --quiet ragtorch
+          cd /tmp
+          /tmp/pypi-verify-env/bin/python -c "
+          import ragtorch
+          print('installed from PyPI:', ragtorch.__version__)
+          from ragtorch import Module, Sequential
+
+          class Echo(Module):
+              def forward(self, input):
+                  return input
+
+          assert Sequential(Echo())('ok') == 'ok'
+          print('PyPI installation smoke test passed')
+          "
+
+      - name: Create GitHub release (tag-triggered runs only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
