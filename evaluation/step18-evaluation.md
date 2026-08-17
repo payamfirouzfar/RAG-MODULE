@@ -1,34 +1,30 @@
 # Step 18 Evaluation — Execution-Scoped Event Delivery
 
-Date: 2026-08-17 (18A) — updated through 18H + real CI evidence (PR #25)
+Date: 2026-08-17 (18A) — closed 2026-08-17 (18L, post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
 
-Step 18 is not complete until 18A–18L have independently satisfied:
-repository audit, architecture/design, ADR, contract, implementation,
-unit tests, integration/contract tests, failure/edge-case tests,
-benchmark, evaluation, CI, documentation, compatibility, security,
-dependency review, and final diff/release gate. This document is the
-Step 18 evidence ledger — the durable record of what has actually been
-proven, and by what evidence, as opposed to what ADR-022 architecturally
-decided. ADR-022 remains authoritative for architectural reasoning
-(decision, alternatives, non-goals, deferred risks); this document
-mirrors that ADR's status against actual test/benchmark/CI evidence and
-tracks it per-gate rather than as one aggregate claim.
+18A through 18L have each independently satisfied their required
+evidence — repository audit, architecture/design, ADR (Accepted),
+contract, implementation, unit tests, integration/contract tests,
+failure/edge-case tests, benchmark, evaluation, CI (both PR-scoped and
+post-merge), documentation, compatibility, security, dependency review,
+and final diff/release gate. See 18L-6's closure checklist below for
+the complete, evidence-cited gate-by-gate record. This document is the
+Step 18 evidence ledger — the durable record of what was actually
+proven, and by what evidence, as opposed to what ADR-022
+architecturally decided. ADR-022 (now **Accepted**) remains
+authoritative for architectural reasoning; this document mirrors its
+status against actual test/benchmark/CI evidence.
 
-**18A–18H are now CI-proven, not merely locally verified.** PR #25
-(`feat/step18-event-scoped-delivery-audit` → `main`) triggered a real
-`pull_request`-scoped run of `.github/workflows/ci.yml`
-(run `32035631246`): `test (3.10)`, `test (3.11)`, `test (3.12)` all
-green, every configured step passed, including the newly-added Step 18
-benchmark step. This is genuine CI execution — a downloaded artifact
-from the actual run, not a re-typed local result. See the 18J row in
-the Evidence Matrix and the "18J (pulled forward)" subsection under
-18H for the full record. **18I (final synthesis), 18K (docs/
-compatibility/security/dependency), and 18L (release gate) remain
-open** — Step 18 as a whole is still IN PROGRESS.
+**PR #25 merged as `e83d23a`; post-merge CI on `main` confirmed green**
+(run `32038947496`, 461/461 on 3.10/3.11/3.12) — the specific evidence
+class this project's precedent (ADR-021) requires before an ADR can be
+marked Accepted or a requirements-matrix row can be filled in. Both are
+now done: ADR-022 → Accepted (18L-3), requirements matrix A70 added
+(18L-4). See the 18L section below for the full closure record.
 
 ## Evidence vocabulary
 
@@ -105,8 +101,8 @@ not renamed here either.
 | 18G | Quality | B023 late-binding closure defects caught and fixed in test code itself | — | lint output diffed before/after fix | ✓ | N/A | Test-proven (defect in test authoring, not production code) |
 | 18H | Benchmark | Event delivery overhead measured (no scope / empty scope / active scope), corrected baseline (`context=None`, not `ExecutionContext()`) | ADR-022 Benchmark strategy | `benchmarks/step18_execution_scoped_events.py`; 3 local corrected runs (18H-C1) + real CI artifact from PR #25 run 32035631246 (Python 3.12.13: no_scope p50 4.318µs, empty/active ~5.0µs, +16% scope-check delta) | ✓ | ✓ (benchmark executed successfully and artifact uploaded on all 3 Python versions) | **Benchmark-proven, CI-proven** |
 | 18I | Evaluation | Step 18 behavior evaluated against the frozen ADR-022 contract as a whole, every claim traced to evidence | this document | 18I-1 through 18I-20 above, including an explicit provenance table and an unsupported-claims check | ✓ | N/A (docs-only synthesis; no new executable claim requiring CI) | **Locally verified (synthesis complete)** |
-| 18J | CI | Required CI gates pass on the repository's actual CI workflow, not a local approximation | `.github/workflows/ci.yml` | PR #25, run 32035631246 — `test (3.10)`, `test (3.11)`, `test (3.12)` all green, every configured step passed | ✓ | ✓ | **CI-proven** |
-| 18K | Docs | ADR-022 status moved to Accepted; requirements matrix A5/A10 evidence columns updated | requirements-matrix-v0.1.md | **Deliberately deferred to 18L** — repository audit (18K) found every prior ADR (e.g. ADR-021) and every filled matrix row (A65-A69) cites *post-merge* CI, not PR CI; PR #25 has not merged, so neither transition is legitimate yet | — | — | **Blocked on 18L merge** (not an omission — see 18K audit note below) |
+| 18J | CI | Required CI gates pass on the repository's actual CI workflow — both PR-scoped and post-merge | `.github/workflows/ci.yml` | PR #25 final run `32038875635` (pre-merge) + post-merge `main` run `32038947496` on merge commit `e83d23a`, 461/461 on 3.10/3.11/3.12 (18L-2) | ✓ | ✓ (both pre- and post-merge) | **CI-proven (post-merge)** |
+| 18K/18L | Docs | ADR-022 status moved to Accepted; requirements matrix A70 added, cross-referencing A5/A10 | ADR-022, requirements-matrix-v0.1.md | ADR-022 Status → Accepted, citing merge `e83d23a` + post-merge CI run `32038947496`; new row A70 added following the A68/A69 "new row fulfills old gap" convention; stale "Next priority" item #1 marked done (18L-3/18L-4) | ✓ | ✓ (cites the post-merge run itself) | **Complete** |
 | 18K | Compatibility | Full compatibility review recorded (API/behavioral/serialization/runtime) | ADR-022 Compatibility § | ADR-022 "Expanded (18K, implementation-verified)" subsection: API/behavioral/serialization/runtime reviewed individually against the actual diff, not re-asserted from design intent | ✓ | ✓ (cites CI-proven facts already established, e.g. run `32037264224`) | **Complete** |
 | 18K | Security | Full security review recorded (event payload exposure, cross-execution observability) | ADR-022 Security § (preliminary) | ADR-022 "Expanded (18K, implementation-verified)" subsection: payload content re-grepped and confirmed unchanged, cross-execution observability confirmed as a narrowing not a widening, listener-retention/trust-boundary/no-new-introspection all explicitly addressed | ✓ | N/A (analysis of existing diff, no new executable claim) | **Complete** |
 | 18K | Dependencies | Dependency review recorded (expect: zero new dependencies) | ADR-022 Dependency review § | ADR-022 "Expanded (18K, implementation-verified)" subsection: `git diff` against every dependency manifest re-run and confirmed empty; `events.py` import block re-read directly | ✓ | N/A (manifest diff, no new executable claim) | **Complete** |
@@ -874,38 +870,111 @@ matrix A5/A10 rows are **unchanged**. Both are explicitly deferred to
 see the Evidence Matrix's 18K/Docs row above, marked "Blocked on 18L
 merge," not silently marked Complete.
 
-## Step 18 completion state (updated through 18H + real CI evidence)
+## 18L — Final Diff / Status / Release Gate
 
-**Step 18 is NOT complete**, but its evidence base is now
-substantially stronger. 18A through 18H, plus the core of 18J, have
-reached **CI-proven** status via PR #25's real GitHub Actions run
-(`32035631246`) — not local approximation, not YAML-syntax validation
-only. `test (3.10)`/`test (3.11)`/`test (3.12)` all passed with every
-configured step green, including the newly-added Step 18 benchmark
-step and its artifact upload.
+### 18L-1: merge
 
-**18I is now complete** (see the 18I — Final Evaluation section above:
-18I-1 through 18I-20, with an explicit evidence-provenance table and a
-confirmed-clean unsupported-claims check).
+PR #25 (`feat/step18-event-scoped-delivery-audit` → `main`) merged via
+`gh pr merge 25 --merge` after confirming, immediately prior, that its
+head SHA (`c84d298`) was `MERGEABLE`/`mergeStateStatus: CLEAN` with all
+three PR checks `SUCCESS`. Merge commit: **`e83d23a057a54f54979a87dd82d0264cb920e212`**.
 
-**18K is now complete for everything not blocked on merge state**: the
-expanded compatibility/security/dependency review is written directly
-into ADR-022 (18K-3), each claim re-verified against the actual diff
-rather than re-asserted from 18C design intent. The ADR-022 Accepted
-transition and the A5/A10 requirements-matrix evidence-column update
-are **deliberately deferred to 18L** — 18K's own repository audit
-(18K-1) found this project's hard, consistent precedent (ADR-021 and
-every filled matrix row A65-A69) requires post-merge CI evidence for
-both, which does not exist yet for Step 18.
+### 18L-2: post-merge CI confirmation
 
-Remaining before Step 18 can be marked Complete:
+Real post-merge CI run on `main` itself (not the `pull_request`
+trigger): **run `32038947496`**, `push` trigger, triggered automatically
+by the merge, `headSha` confirmed as `e83d23a` (the actual merge
+commit, verified via `gh run view --json headSha`, not assumed).
+Result: **`test (3.10)`/`test (3.11)`/`test (3.12)` all `success`**,
+**461/461 passed on every version** (log lines pulled directly via
+`gh run view --log`, not re-typed from memory), lint clean on all
+three. This is the exact evidence class ADR-021 required and 18K's
+audit (18K-1) identified as missing until this point.
 
-- **18L** — final diff/status/release gate: merge decision for PR #25,
-  post-merge CI confirmation on the actual merged `main` SHA, **then**
-  ADR-022 Status → Accepted and the A5/A10 evidence-column update
-  (both deferred here from 18K), consistent with this project's
-  established precedent of treating pre-merge and post-merge CI as
-  distinct evidence.
+### 18L-3: ADR-022 → Accepted
+
+`docs/architecture/decisions/ADR-022-execution-scoped-event-delivery.md`
+Status field updated from Proposed to **Accepted**, with an evidence
+trail citing PR #25, merge commit `e83d23a`, and post-merge CI run
+`32038947496` (461/461, 3.10/3.11/3.12) — matching ADR-021's own
+Accepted-record format exactly (same structure: PR reference, merge
+SHA, CI run link, test count, Python versions).
+
+### 18L-4: requirements matrix updated
+
+Added **A70** (next-free ID, confirmed during 18C and re-confirmed
+here still free) to `docs/architecture/requirements-matrix-v0.1.md`,
+following the established append-only convention (A2/A5/A10's original
+rows stay historically frozen; A68/A69 already demonstrated this
+exact "new row cross-references and fulfills an old one" pattern for
+Block/RAGModule — A70 does the same for A5/A10). A70's evidence column
+cites ADR-022 (Accepted), the specific implementation files, the two
+formally-deferred risks (not silently resolved), the full test/
+benchmark file list, and the same post-merge CI run/commit as 18L-3.
+The stale "Next priority" section's item #1 (identified as the
+strongest textual evidence for selecting this gap back in 18A) is
+marked done with a cross-reference to Step 18/ADR-022/A70, following
+the same strikethrough-and-note convention used nowhere else in this
+doc before now — introduced here because no prior step's audit had
+identified and later closed one of that section's own numbered items.
+
+### 18L-5: final diff/scope review
+
+```
+git status --short   (on main, post-merge, post-doc-update)
+```
+
+Files touched across the entire Step 18 sequence (18A-18L), confirmed
+against the actual merge commit's diff (`git show e83d23a --stat`) plus
+this final doc-update pass:
+
+- `src/ragtorch/__init__.py`, `src/ragtorch/core/__init__.py`,
+  `src/ragtorch/core/context.py`, `src/ragtorch/core/events.py`,
+  `src/ragtorch/core/module.py` — the exact five files ADR-022's
+  Decision section named, no more, no fewer.
+- `tests/unit/core/test_events.py`, `tests/integration/test_execution_scoped_events.py`
+  — test additions only, no production logic.
+- `benchmarks/step18_execution_scoped_events.py` — new, measurement
+  only.
+- `.github/workflows/ci.yml` — one additive non-blocking benchmark
+  step, mirroring the existing Step 5 pattern exactly.
+- `docs/architecture/decisions/ADR-022-execution-scoped-event-delivery.md`,
+  `docs/architecture/requirements-matrix-v0.1.md`,
+  `evaluation/step18-evaluation.md`, `evaluation/step18b-source-audit.md`
+  — documentation/evidence, no executable code.
+
+**No accidental changes, no generated artifacts, no debug code, no
+skipped tests, no weakened assertions found** — every file in the diff
+is individually traceable to a specific gate in this ledger.
+
+### 18L-6: closure gate
+
+```
+□ Contract              PASS — ADR-022 §Decision, frozen 18D
+□ Implementation        PASS — 18E, CI-proven (32038947496)
+□ Unit tests             PASS — 22 tests, CI-proven
+□ Integration tests      PASS — 13 tests, CI-proven
+□ Failure tests          PASS — EVT-FAILURE-001/002, CI-proven
+□ Concurrency tests      PASS — EVT-ISOLATION-001, CI-proven
+□ Benchmark               PASS — 18H, CI-proven, bounded interpretation
+□ Evaluation               PASS — 18I, full provenance trace
+□ CI configured            PASS — .github/workflows/ci.yml
+□ CI executed (PR)         PASS — run 32038875635 (final PR commit)
+□ CI executed (post-merge) PASS — run 32038947496 (18L-2)
+□ Documentation             PASS — ADR-022 Accepted, A70 added
+□ Compatibility              PASS — 18K-3, implementation-verified
+□ Security                    PASS — 18K-3, implementation-verified
+□ Dependencies                  PASS — 18K-3, zero new dependencies confirmed
+□ Diff review                    PASS — 18L-5
+□ Evidence ledger                 PASS — this document
+□ Requirements matrix              PASS — A70 (18L-4)
+□ ADR status                        PASS — Accepted (18L-3)
+□ No accidental changes              PASS — 18L-5
+
+ALL PASS → COMPLETE
+```
+
+**Step 18 status: COMPLETE.**
 
 ## Conclusion (18A)
 

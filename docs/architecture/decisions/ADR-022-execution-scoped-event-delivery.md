@@ -2,7 +2,19 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Accepted after real GitHub Actions post-merge CI confirmed on the
+actual merged `main` SHA — not from PR CI or local checks alone, per
+this project's standing rule that "PR green is not proof." Evidence
+trail:
+
+- PR #25 (18A-18K: audit, ADR, contract, implementation, unit/
+  integration/failure/concurrency tests, benchmark, evaluation,
+  expanded compatibility/security/dependency review): merged
+  `e83d23a`, post-merge CI run
+  [32038947496](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32038947496),
+  461/461 on 3.10/3.11/3.12, lint clean, on commit `e83d23a`.
 
 ## Context
 
