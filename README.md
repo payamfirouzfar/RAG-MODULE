@@ -1,26 +1,57 @@
 # ragtorch
 
-A modular framework kernel for building RAG (retrieval-augmented generation)
-systems. `ragtorch` is the package name for now — it can be renamed before
-public release without changing the underlying design.
+A modular, provider-independent execution kernel for building composable
+RAG (retrieval-augmented generation) systems.
 
-## Status
+## What ragtorch is today
 
-**Step 4 — Runtime Context Propagation + Module Execution Semantics.**
-This repository contains the core kernel (`Module`, `RAGModule`,
-`Sequential`, configuration, errors, events), execution identity
-(`ExecutionContext`, `Run`), observability primitives (`Trace`/`Span`,
-`MetricsCollector`, structured logging), a model-agnostic evaluation
-framework (`ragtorch.evaluation`), `ExecutionEngine` (coordinates
-`Run`/`Trace`/`Metrics` around a `Module` call as a guaranteed contract, at
-three observability levels `OFF`/`BASIC`/`DEBUG`), and now formally-defined
-nested execution semantics — `ExecutionContext` propagates through
-composite `Module` execution (e.g. `Sequential`'s children), so each child
-gets a distinct, correctly-parented execution identity, with zero global
-state. There is intentionally **no LLM, embedding, vector store, or
-orchestration integration yet**. Those are built on top of this foundation
-in later steps — see `docs/architecture/requirements.md` for the
-vendor/model/storage-independence rules that will govern them.
+A framework kernel you compose your own RAG systems on top of:
+
+- **`Module`/`Sequential`/`Block`/`CompositionGraph`** — the core
+  composable execution primitives. `Module` is the concrete
+  implementation base; `Component` is a minimal structural protocol
+  (`name`, `component_type`, `__call__`) that anything can satisfy
+  without inheriting from `Module` at all.
+- **`ExecutionEngine`** — coordinates `Run`/`Trace`/`MetricsCollector`
+  around a `Module` call as a guaranteed contract, at three
+  observability levels (`OFF`/`BASIC`/`DEBUG`).
+- **`ragtorch.evaluation`** — a model-agnostic evaluation framework
+  (`Evaluator`, `Metric`, `EvaluationCase`) that scores any callable
+  system, not only `ragtorch` components.
+- **Nested execution context propagation** — composite `Module`
+  execution (e.g. `Sequential`'s children) gets correctly-parented
+  execution identity for each child, with zero global state.
+- **Structural, immutable architecture metadata** — `InputPort`/
+  `OutputPort`/`is_compatible()`/`ArchitectureSnapshot` let you describe
+  and validate a component's boundary and a whole architecture's shape
+  without executing anything.
+
+## What ragtorch is not yet
+
+ragtorch does not currently ship any built-in:
+
+- embedding models
+- vector databases
+- LLM providers
+- document loaders
+- chunking framework
+- rerankers
+- multimodal or vision providers
+- Graph RAG implementation
+
+These are explicitly out of scope for the framework kernel itself (see
+[docs/architecture/decisions/ADR-005-provider-independence.md](docs/architecture/decisions/ADR-005-provider-independence.md)).
+You compose your own retrieval/generation components — plain classes
+satisfying `Component`, or `Module` subclasses — and wire them together
+with `Sequential`/`Block`/`CompositionGraph`. See the Quick example
+below for a working (if deliberately simple) end-to-end pipeline built
+entirely this way.
+
+Whether and how a provider-adapter layer gets added to ragtorch itself
+is an open, evidence-gated question — see
+[docs/architecture/requirements-matrix-v0.1.md](docs/architecture/requirements-matrix-v0.1.md)
+rows A76/A78/A79 for the audit trail. Nothing here should be read as
+implying that layer is coming in any particular form or timeframe.
 
 ## Design principle
 
@@ -32,10 +63,21 @@ for the reasoning behind the core `Module` contract.
 
 ## Install
 
-`ragtorch` is **not yet published to PyPI**. `pip install ragtorch` is
-not available -- do not run it, it will either fail or install an
-unrelated package of the same name. The only supported installation
-path today is from a local source checkout.
+`ragtorch` is pre-1.0 (`0.x`) — the public API may change between minor
+versions; see
+[ADR-024](docs/architecture/decisions/ADR-024-versioning-and-release-policy.md)
+for the exact versioning policy. Pin an exact version, not a range, if
+you need stability across upgrades.
+
+### From PyPI
+
+```bash
+pip install ragtorch
+```
+
+Only use this once `ragtorch` has actually been published — check
+[CHANGELOG.md](CHANGELOG.md) or the PyPI project page for the current
+released version before relying on this command.
 
 ### Development install
 
@@ -59,7 +101,8 @@ pip install dist/ragtorch-*.whl
 ```
 
 The wheel has zero runtime dependencies and is provider-independent --
-no LLM, embedding, vector-store, or network dependency is pulled in.
+no LLM, embedding, vector-store, or network dependency is pulled in,
+and installation performs no network access or provider authentication.
 
 ## Quick example
 
@@ -80,6 +123,30 @@ class Reverse(Module):
 pipeline = Sequential(UpperCase(), Reverse())
 print(pipeline("hello"))  # "OLLEH"
 print(pipeline.inspect())
+```
+
+A minimal retrieval + generation pipeline, composed entirely from your
+own components (no built-in retriever/generator exists -- see "What
+ragtorch is not yet" above):
+
+```python
+from ragtorch import Module, Sequential
+
+
+class Retriever(Module):
+    def forward(self, query, *, context=None):
+        # Replace with a real embedding model + vector store/index.
+        return {"query": query, "docs": ["doc about " + query]}
+
+
+class Generator(Module):
+    def forward(self, payload, *, context=None):
+        # Replace with a real LLM call.
+        return f"Answer for '{payload['query']}': {payload['docs']}"
+
+
+rag = Sequential(Retriever(), Generator())
+print(rag("refund policy"))
 ```
 
 Evaluating any callable system (no LLM required):
@@ -146,9 +213,12 @@ src/ragtorch/core/         core kernel + execution/observability primitives
 src/ragtorch/evaluation/    model-agnostic evaluation framework
 tests/unit/                  unit tests
 tests/integration/            integration tests
+tests/packaging/               clean-install / distribution artifact tests
+tests/discovery/                 RAG-consumer discovery experiments (not public API)
 docs/architecture/decisions/    ADRs
 docs/architecture/requirements.md   frozen project-wide requirements
-evaluation/                       milestone evaluation reports and benchmarks
+docs/architecture/requirements-matrix-v0.1.md   append-only requirements/evidence ledger
+evaluation/                       per-step evaluation reports and benchmarks
 ```
 
 ## Contributing

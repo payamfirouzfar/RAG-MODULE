@@ -1,8 +1,61 @@
 # Changelog
 
 All notable changes to this project are documented in this file.
-Format follows [Keep a Changelog](https://keepachangelog.com/), and this
-project adheres to [Semantic Versioning](https://semver.org/).
+Format follows [Keep a Changelog](https://keepachangelog.com/). This
+project adheres to [Semantic Versioning](https://semver.org/), with the
+pre-1.0 qualification made explicit in
+[ADR-024](docs/architecture/decisions/ADR-024-versioning-and-release-policy.md):
+while `MAJOR` is `0`, a `MINOR` bump may include breaking changes to the
+public API (`ragtorch.__all__`); `PATCH` bumps are backward-compatible
+fixes only.
+
+## [0.5.0] - Step 28: Public Python Package / PyPI Release Infrastructure
+
+### Added
+
+- `docs/RELEASING.md`: the deterministic release procedure (version
+  bump → CHANGELOG → local validation → PR → CI → merge → tag →
+  automated build/validate/publish/verify) — see ADR-024.
+- ADR-024: versioning and release policy, making SemVer's pre-1.0
+  allowance explicit and documenting why `pyproject.toml`'s manually-set
+  `version` field (not dynamic/VCS-derived versioning) remains the
+  single source of truth.
+- `.github/workflows/release.yml`: a dedicated release workflow,
+  deliberately separate from `ci.yml`. Triggered only by a `v*` tag push
+  or an explicit manual confirmation — never by a pull request or a
+  plain push to `main`. Rebuilds and independently re-validates the
+  wheel/sdist from the tagged commit (including verifying the tag
+  matches `pyproject.toml`'s version exactly), publishes via PyPI
+  Trusted Publishing (OIDC — no stored API token), then verifies the
+  publication by installing the just-published version from PyPI itself
+  into a fresh environment and running a smoke test.
+- Two new packaging tests (`tests/packaging/test_clean_install.py`):
+  `ExecutionEngine` and the evaluation API (`ragtorch.evaluation`) are
+  now actually executed — not merely imported — against a clean
+  installed wheel, closing a real coverage gap the prior test suite had
+  (only `Module`/`Sequential` were functionally exercised).
+- `benchmarks/step28_packaging_properties.py`: wheel/sdist build time,
+  clean-install time, import time, and artifact size, measured (not
+  asserted against a threshold) for regression visibility.
+- `pyproject.toml`: added `keywords`, refined `classifiers`
+  (`Development Status :: 3 - Alpha`, `Operating System :: OS
+  Independent`, `Typing :: Typed`), and added `Repository`/`Issues`/
+  `Changelog` project URLs alongside the existing `Homepage`.
+
+### Changed
+
+- README rewritten to accurately describe the current state (previously
+  stuck at "Step 4" wording from early in the project) with explicit
+  "what ragtorch is today" / "what ragtorch is not yet" sections, so the
+  package is never marketed as shipping RAG-provider functionality it
+  does not have.
+
+### Compatibility
+
+- Zero changes to the public API (`ragtorch.__all__`) or any existing
+  `Module`/`Sequential`/`Block`/`CompositionGraph`/`ExecutionEngine`/
+  evaluation behavior. This release is packaging/release-infrastructure
+  only.
 
 ## [0.4.0] - Step 4: Runtime Context Propagation + Module Execution Semantics
 
