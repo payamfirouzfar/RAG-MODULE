@@ -852,3 +852,248 @@ def test_double_unsubscribe_already_raises_single_threaded(bus_cls):
 
     with pytest.raises(ValueError):
         bus.unsubscribe(listener)
+
+
+# ---------------------------------------------------------------------------
+# Step 22: EVT-REENTRANT-001 audit -- deterministic characterization tests,
+# not sleep-based, not theoretical. See evaluation/step22-evaluation.md for
+# the full 15-case (R1-R15) audit and Outcome A decision: current behavior
+# is correct and sufficient, no production code change, no ADR-024.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r1_nested_publish_of_a_different_terminating_event_works_correctly(bus_cls):
+    """A listener publishing a DIFFERENT event, with its own terminating
+    condition, is a legitimate pattern -- not accidental recursion. It
+    already works correctly with zero special-casing."""
+    bus = bus_cls()
+    order: list[str] = []
+
+    def listener(event: Event) -> None:
+        order.append(event.module_name)
+        if event.module_name == "first":
+            bus.publish(Event(EventType.MODULE_STARTED, "second"))
+
+    bus.subscribe(listener)
+    bus.publish(Event(EventType.MODULE_STARTED, "first"))
+
+    assert order == ["first", "second"]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r3_nested_publish_reaches_other_listeners_before_outer_resumes(bus_cls):
+    """Documents actual delivery ordering under nesting: a nested
+    publish() call fully completes (reaching every listener) BEFORE
+    the outer publish() loop resumes for the remaining listeners of the
+    original event. Not "publish order" in a flat sense -- this is the
+    precise, verified (not assumed) ordering contract."""
+    bus = bus_cls()
+    order: list[tuple[str, str]] = []
+
+    def listener_a(event: Event) -> None:
+        order.append(("a", event.module_name))
+        if event.module_name == "first":
+            bus.publish(Event(EventType.MODULE_STARTED, "second"))
+
+    def listener_b(event: Event) -> None:
+        order.append(("b", event.module_name))
+
+    bus.subscribe(listener_a)
+    bus.subscribe(listener_b)
+    bus.publish(Event(EventType.MODULE_STARTED, "first"))
+
+    assert order == [
+        ("a", "first"),
+        ("a", "second"),
+        ("b", "second"),
+        ("b", "first"),
+    ]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r5_nested_publish_failure_caught_by_listener_does_not_affect_outer_delivery(
+    bus_cls,
+):
+    """If a listener catches its own nested ListenerDeliveryError, the
+    outer publish() call is completely unaffected -- other outer
+    listeners still run."""
+    bus = bus_cls()
+    order: list[str] = []
+
+    def listener_a(event: Event) -> None:
+        order.append("a")
+        if event.module_name == "first":
+            inner = bus_cls()
+
+            def failing(e: Event) -> None:
+                raise RuntimeError("nested boom")
+
+            inner.subscribe(failing)
+            try:
+                inner.publish(Event(EventType.MODULE_STARTED, "nested"))
+            except ListenerDeliveryError:
+                order.append("a-caught-nested")
+
+    def listener_b(event: Event) -> None:
+        order.append("b")
+
+    bus.subscribe(listener_a)
+    bus.subscribe(listener_b)
+    bus.publish(Event(EventType.MODULE_STARTED, "first"))
+
+    assert order == ["a", "a-caught-nested", "b"]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r5b_uncaught_nested_publish_failure_is_isolated_by_outer_publish(bus_cls):
+    """If a listener does NOT catch its own nested
+    ListenerDeliveryError, ADR-023's isolate-and-continue already
+    handles it correctly with zero reentrancy-specific code: the outer
+    publish() call's own except-Exception clause catches it like any
+    other listener failure, and OTHER outer listeners still run."""
+    bus = bus_cls()
+    order: list[str] = []
+
+    def listener_a(event: Event) -> None:
+        order.append("a")
+        if event.module_name == "first":
+
+            def failing(e: Event) -> None:
+                raise RuntimeError("nested boom")
+
+            bus.subscribe(failing)
+            bus.publish(Event(EventType.MODULE_STARTED, "nested"))  # uncaught here
+
+    def listener_b(event: Event) -> None:
+        order.append("b")
+
+    bus.subscribe(listener_a)
+    bus.subscribe(listener_b)
+
+    with pytest.raises(ListenerDeliveryError):
+        bus.publish(Event(EventType.MODULE_STARTED, "first"))
+
+    # listener_b still ran for the OUTER event despite listener_a's
+    # nested publish() raising and propagating out of listener_a itself.
+    assert "b" in order
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r7_unconditional_same_event_recursion_raises_clean_recursion_error(bus_cls):
+    """Unconditional recursive publish() of the same event is
+    accidental infinite recursion -- it cleanly raises RecursionError,
+    self-bounded by the interpreter, not a hang or resource leak."""
+    bus = bus_cls()
+    call_count = [0]
+
+    def reenters(event: Event) -> None:
+        call_count[0] += 1
+        bus.publish(event)
+
+    bus.subscribe(reenters)
+
+    with pytest.raises(RecursionError):
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    # bounded: the interpreter's own recursion limit terminates this,
+    # not an unbounded loop -- confirmed by a nonzero, finite count.
+    assert call_count[0] > 0
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r10_cross_object_nesting_is_not_reentrancy(bus_cls):
+    """A listener on one EventBus/EventScope instance calling
+    publish() on a DIFFERENT instance is not reentrancy at all --
+    each object's own listener snapshot is independent. No
+    RecursionError risk merely from crossing object boundaries."""
+    bus_a = bus_cls()
+    bus_b = bus_cls()
+    order: list[tuple[str, str]] = []
+
+    def listener_a(event: Event) -> None:
+        order.append(("a", event.module_name))
+        bus_b.publish(Event(EventType.MODULE_FINISHED, "from-b"))
+
+    def listener_b(event: Event) -> None:
+        order.append(("b", event.module_name))
+
+    bus_a.subscribe(listener_a)
+    bus_b.subscribe(listener_b)
+    bus_a.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    assert order == [("a", "x"), ("b", "from-b")]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_r12_self_unsubscribe_then_nested_publish_sees_updated_snapshot(bus_cls):
+    """A listener that unsubscribes itself and then triggers a nested
+    publish() call sees itself correctly absent from that nested
+    call's own snapshot -- composes cleanly with ADR-023's
+    snapshot-per-publish-call semantics."""
+    bus = bus_cls()
+    order: list[str] = []
+
+    def self_unsub(event: Event) -> None:
+        order.append(event.module_name)
+        if event.module_name == "outer":
+            bus.unsubscribe(self_unsub)
+            bus.publish(Event(EventType.MODULE_STARTED, "inner"))
+
+    bus.subscribe(self_unsub)
+    bus.publish(Event(EventType.MODULE_STARTED, "outer"))
+
+    assert order == ["outer"]
+    assert len(bus._listeners) == 0
+
+
+def test_reentrant_recursion_through_real_module_call_raises_clean_recursion_error():
+    """R14/R15: a listener that calls a real Module (not just
+    publish() directly) reproduces the identical RecursionError -- the
+    realistic failure mode a caller would actually hit, not only a
+    synthetic direct-publish() scenario. Confirms Module.__call__ does
+    not mask or corrupt the exception."""
+    from ragtorch.core.module import Module, event_bus
+
+    class Echo(Module):
+        def forward(self, input, *, context=None):
+            return input
+
+    bus = event_bus()
+
+    def reenters(event: Event) -> None:
+        if event.type is EventType.MODULE_STARTED:
+            Echo()(1)
+
+    bus.subscribe(reenters)
+    try:
+        with pytest.raises(RecursionError):
+            Echo()(1)
+    finally:
+        bus.unsubscribe(reenters)
+
+
+def test_reentrant_recursion_is_cheap_and_self_bounded():
+    """Security-relevant characterization (22I): accidental infinite
+    recursion self-terminates quickly and cheaply -- not a meaningful
+    denial-of-service vector. Asserts an order-of-magnitude bound
+    (under 1 second), not a precise timing value, to stay robust
+    against slower CI hardware while still catching a real regression
+    (e.g. a future change that makes this hang instead of raise)."""
+    import time
+
+    bus = EventBus()
+    call_count = [0]
+
+    def reenters(event: Event) -> None:
+        call_count[0] += 1
+        bus.publish(event)
+
+    bus.subscribe(reenters)
+    start = time.perf_counter()
+    with pytest.raises(RecursionError):
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 1.0
+    assert call_count[0] > 0
