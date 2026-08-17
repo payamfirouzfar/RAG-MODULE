@@ -289,18 +289,44 @@ zero output.
 
 ## Decision
 
-**Step 16 implementation Definition of Done: met locally** (Python
-3.10 and 3.12 both verified, 406/406, lint/format/mypy clean,
-`block.py` 100% coverage). ADR-020's status remains `Proposed` and A68's
-evidence remains local-only until real CI confirms it — per the
-project's standing rule that local checks are not CI, and per Steps
-13-15's precedent that an ADR is flipped to `Accepted` only after
-independent post-merge CI confirmation on the actual merged `main`
-SHA.
+**Step 16 implementation Definition of Done: met and confirmed by
+real CI.** Local verification (406/406 on Python 3.10 and 3.12,
+lint/format/mypy clean, `block.py` 100% coverage) was independently
+confirmed by GitHub Actions PR CI (run `31981141508`, 406/406 on
+3.10/3.11/3.12) and, critically, by **post-merge CI on the actual
+merged `main` SHA** (run `31981239275`, commit `6ca35ca`, 406/406 on
+3.10/3.11/3.12) — not claimed from local checks or PR-green alone,
+per the project's standing rule that "PR green is not proof." The
+16O compatibility check (zero changes to any protected runtime file)
+and 16P dependency check (zero new dependencies) were both re-verified
+directly against the CI-confirmed branch, not merely asserted from an
+earlier local run. ADR-020's status is flipped to Accepted only on the
+basis of this post-merge evidence (see ADR-020 "Status").
 
 ## Completion record
 
-Pending PR creation (docs-only ADR-020 + A68, then a separate
-implementation PR, matching Steps 13-15's exact discipline), PR CI,
-merge, and post-merge CI on `main` for both — this section is
-completed only after all of those are independently confirmed.
+| Field | Value |
+| --- | --- |
+| Step | 16 — Block Composition |
+| Architectural decision | ADR-020 |
+| Requirement | A68 (fulfills A2, open since Step 1) |
+| Implementation | `Block(Module)` — `src/ragtorch/core/block.py` |
+| Tests | 406 (382 pre-existing, unmodified + 21 unit + 3 integration) |
+| CI | Python 3.10 / 3.11 / 3.12 — all pass |
+| Benchmark | Completed (`benchmarks/step16_block_composition.py`, 3/10/30-node chains, evidence for ADR-020 Q11's deferred plan-caching decision) |
+| Evaluation | Completed (this document) |
+| PR #19 merge SHA (ADR-020 initial contract, 16A-16C) | `8583d673e6d4045c2cc22b54985c10483a8a8920` |
+| PR #20 merge SHA (implementation, 16D-16P) | `6ca35ca3145bb2def42dafc855e6485a2423983e` |
+| Post-merge `main` CI run (final) | [31981239275](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/31981239275) — 406/406 on 3.10/3.11/3.12, lint clean, on commit `6ca35ca` |
+| Status | **COMPLETE** |
+
+Marked COMPLETE only after post-merge `main` CI passed on the final
+merge commit — not from PR CI, not from local checks. The runtime
+required zero changes to support `Block` — confirmed by explicit
+`git diff` against all ten protected files
+(`module.py`/`sequential.py`/`component.py`/`composition.py`/
+`connection.py`/`ports.py`/`execution_plan.py`/`execution.py`/
+`engine.py`/`context.py`) on the actual CI-verified branch, directly
+proving the architecture doc's original "Block must not require
+special runtime treatment" requirement rather than merely asserting
+it.
