@@ -754,15 +754,28 @@ def test_concurrent_subscribe_and_publish_does_not_crash(bus_cls):
     stop = threading.Event()
     errors: list[BaseException] = []
 
+    # Capped, not unbounded: an unbounded churn_subscribe loop makes
+    # publish()'s cost grow with however many listeners accumulated by
+    # the time each publish() runs, which is CI-runner-speed-dependent
+    # and can blow past any fixed join() timeout on a slow/shared
+    # runner (this exact failure mode was caught by real CI, not
+    # invented) -- the point of this test is "does concurrent mutation
+    # crash publish()", not "how many listeners can we accumulate", so
+    # capping the growth preserves the test's actual intent while
+    # making its runtime bounded and CI-stable.
+    max_extra_listeners = 2_000
+
     def churn_subscribe():
         barrier.wait(timeout=5)
-        while not stop.is_set():
+        added = 0
+        while not stop.is_set() and added < max_extra_listeners:
             bus.subscribe(listener)
+            added += 1
 
     def churn_publish():
         barrier.wait(timeout=5)
         try:
-            for _ in range(5_000):
+            for _ in range(2_000):
                 bus.publish(Event(EventType.MODULE_STARTED, "x"))
         except BaseException as exc:  # noqa: BLE001 -- surfaced via errors, not swallowed
             errors.append(exc)
@@ -771,9 +784,9 @@ def test_concurrent_subscribe_and_publish_does_not_crash(bus_cls):
     publish_thread = threading.Thread(target=churn_publish)
     subscribe_thread.start()
     publish_thread.start()
-    publish_thread.join(timeout=15)
+    publish_thread.join(timeout=60)
     stop.set()
-    subscribe_thread.join(timeout=5)
+    subscribe_thread.join(timeout=10)
 
     assert not publish_thread.is_alive()
     assert not subscribe_thread.is_alive()

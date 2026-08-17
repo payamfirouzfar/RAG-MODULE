@@ -145,6 +145,27 @@ deliverable is:
   `test_listener_delivery_error_importable_from_core_and_root` was
   missing its `CoreLDE` assertion (present in source but never
   executed) — found and fixed while editing this exact area.
+
+  **CI-caught test defect, fixed before merge (real PR CI evidence,
+  not local-only):** PR #28's first CI run
+  ([32057162636](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32057162636),
+  commit `ac177c1`) **failed** — `test_concurrent_subscribe_and_publish_does_not_crash[EventBus]`
+  timed out (`publish_thread.join(timeout=15)` — thread still alive
+  after 15s) on the `test (3.11)` runner, cascading a cancellation of
+  `test (3.10)`/`test (3.12)`. Root cause: `churn_subscribe`'s loop was
+  unbounded (`while not stop.is_set(): bus.subscribe(listener)`), and
+  `stop.set()` only fires after `publish_thread.join()` returns — so
+  the listener list could grow arbitrarily large while
+  `churn_publish`'s 5,000 `publish()` calls ran against it, making the
+  test's total runtime dependent on the CI runner's relative speed
+  rather than bounded by the test's own design. This is a genuine test
+  design defect (not a product/library concurrency defect — no crash,
+  no corruption, only a slow-runner timeout), fixed by capping both
+  the subscriber's growth (2,000 max) and the publisher's iteration
+  count (2,000, down from 5,000), with a generous, explicitly-justified
+  60s join timeout. Re-run locally 5× consecutively (0.05-0.12s each)
+  to confirm genuine stability before re-pushing, not merely "should
+  work now."
 - **Integration (21H)**: not applicable — no new production behavior
   exists to exercise through composition paths; the existing 18G
   concurrent-composition test (`test_global_bus_current_concurrent_delivery_behavior_on_cpython`)
