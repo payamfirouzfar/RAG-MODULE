@@ -58,15 +58,29 @@ distributed execution, no retries or timeouts yet — see ADR-018.
 StepExecutionContext/StepExecutionResult are deliberately not named
 ExecutionContext/ExecutionResult -- those names are already used by
 unrelated types (run identity/metadata, and the ExecutionEngine's
-Run/Trace/Metrics bundle, respectively). No Block or serialization
-yet. No LLM, embedding, or vector-store integrations live here; those
-are built on top of this foundation in later steps.
+Run/Trace/Metrics bundle, respectively). Step 15 adds
+ExecutionEngine.execute_plan(), extending the same Run/Trace/Metrics
+lifecycle guarantee execute() gives a single Module call to an entire
+ExecutionPlan, with plan iteration fully delegated to an Executor --
+see ADR-019. Step 16 adds Block: a Module subclass that structurally
+satisfies Component and owns a CompositionGraph, delegating all
+execution to the existing plan()/Executor/ExecutionEngine.execute_plan
+chain -- no second execution system, no runtime change required to
+support it, since GraphNode.component was already accepted
+structurally-typed and unchecked. Block requires an explicit
+input_node/output_node pair (no first/last-node inference) and exactly
+one dependency per non-entry node; multi-root/multi-sink/
+multi-dependency Block semantics are explicit future work -- see
+ADR-020. Serialization remains future work. No LLM, embedding, or
+vector-store integrations live here; those are built on top of this
+foundation in later steps.
 """
 
 from ragtorch.core import (
     ArchitectureChild,
     ArchitectureNode,
     ArchitectureSnapshot,
+    Block,
     Component,
     CompositionGraph,
     ConfigurationError,
@@ -121,6 +135,7 @@ __version__ = "0.4.0"
 
 __all__ = [
     "__version__",
+    "Block",
     "Component",
     "CompositionGraph",
     "GraphNode",

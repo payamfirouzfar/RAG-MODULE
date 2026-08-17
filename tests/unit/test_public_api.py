@@ -7,6 +7,7 @@ import ragtorch
 
 def test_public_exports_present():
     expected = {
+        "Block",
         "Component",
         "CompositionGraph",
         "GraphNode",
