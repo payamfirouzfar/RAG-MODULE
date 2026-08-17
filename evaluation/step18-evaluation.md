@@ -104,7 +104,7 @@ not renamed here either.
 | 18G | Quality | Full suite / lint / format / diff-check after 18G additions | — | 461 passed, clean lint/format, clean diff-check | ✓ | ✓ (all 3 Python versions) | **CI-proven** |
 | 18G | Quality | B023 late-binding closure defects caught and fixed in test code itself | — | lint output diffed before/after fix | ✓ | N/A | Test-proven (defect in test authoring, not production code) |
 | 18H | Benchmark | Event delivery overhead measured (no scope / empty scope / active scope), corrected baseline (`context=None`, not `ExecutionContext()`) | ADR-022 Benchmark strategy | `benchmarks/step18_execution_scoped_events.py`; 3 local corrected runs (18H-C1) + real CI artifact from PR #25 run 32035631246 (Python 3.12.13: no_scope p50 4.318µs, empty/active ~5.0µs, +16% scope-check delta) | ✓ | ✓ (benchmark executed successfully and artifact uploaded on all 3 Python versions) | **Benchmark-proven, CI-proven** |
-| 18I | Evaluation | Step 18 behavior evaluated against the frozen ADR-022 contract as a whole | this document | this document (final pass) | pending | pending | Planned |
+| 18I | Evaluation | Step 18 behavior evaluated against the frozen ADR-022 contract as a whole, every claim traced to evidence | this document | 18I-1 through 18I-20 above, including an explicit provenance table and an unsupported-claims check | ✓ | N/A (docs-only synthesis; no new executable claim requiring CI) | **Locally verified (synthesis complete)** |
 | 18J | CI | Required CI gates pass on the repository's actual CI workflow, not a local approximation | `.github/workflows/ci.yml` | PR #25, run 32035631246 — `test (3.10)`, `test (3.11)`, `test (3.12)` all green, every configured step passed | ✓ | ✓ | **CI-proven** |
 | 18K | Docs | ADR-022 status moved to Accepted; requirements matrix A5/A10 evidence columns updated | requirements-matrix-v0.1.md | pending | pending | pending | Planned |
 | 18K | Compatibility | Full compatibility review recorded (API/behavioral/serialization/runtime) | — | pending | pending | pending | Planned |
@@ -664,6 +664,153 @@ CI-proven** — the actual GitHub Actions run, not a local approximation,
 is now the evidence of record for "the benchmark executes successfully
 on every supported Python version."
 
+## 18I — Final Evaluation
+
+18I implements nothing. Its job is to answer one question: **does the
+actual repository state satisfy the frozen Step 18 contract (ADR-022),
+with every claim traced to specific evidence** — and to say plainly
+where that trace breaks down, rather than filling a gap with prose.
+
+### 18I-1: ADR-022 re-read against current repository state
+
+ADR-022's Status field reads **Proposed** as of this writing
+(`docs/architecture/decisions/ADR-022-execution-scoped-event-delivery.md`,
+line 5) — unchanged since 18C. This is correct and intentional: ADR
+status moves to Accepted only in 18K, after documentation/
+compatibility/security/dependency review is complete, matching this
+project's established precedent (ADR-018 through ADR-021 all stayed
+Proposed through their implementation/test/CI phases). 18I does not
+change this.
+
+### 18I-2: requirements matrix re-read against current repository state
+
+`docs/architecture/requirements-matrix-v0.1.md` rows A5 and A10 are
+**unmodified** — still reading their original Step-4-era text ("EventBus
+must eventually become execution-scoped for isolation" / "process-wide
+EventBus remains as compatibility delivery mechanism"), with no
+evidence column update yet. This is correct: updating those rows is a
+documentation action reserved for 18K, not 18I. 18I's job is only to
+confirm the *evidence* now exists to justify that future update, not
+to perform it early.
+
+### 18I-3 through 18I-9: reconciliation against the Evidence Matrix
+
+Every row in the Step 18 Evidence Matrix (18A–18J) above was re-read
+against this section's own claims before writing this synthesis — no
+new claim is introduced here that isn't already backed by a matrix row
+citing a specific test name, file, or CI run ID. Specifically
+reconciled:
+
+- **Implementation** (18E row): `EventScope`, `ExecutionContext.event_scope`,
+  `child()` propagation, `Module.__call__` dual delivery — all four
+  ADR-022 Decision-section commitments have a corresponding CI-proven
+  matrix row. No implementation commitment in ADR-022's Decision
+  section is missing a corresponding row.
+- **Unit tests** (18D/18E): 22 EVT-* tests, CI-proven.
+- **Integration tests** (18F): 9 tests across `Sequential`, nested
+  `Sequential`, `Block`, `RAGModule`, `ExecutionEngine`, CI-proven.
+- **Failure tests** (18G): `EVT-FAILURE-001`/`EVT-FAILURE-002`,
+  CI-proven.
+- **Concurrency evidence** (18G): `EVT-ISOLATION-001` CI-proven;
+  `EventBus` thread safety explicitly **not** claimed anywhere, matrix
+  row states this directly rather than omitting it.
+- **Benchmark** (18H): CI-proven execution; the *interpretation* is
+  bounded exactly as strongly as the data supports (scope-carrying
+  cost is real and directionally consistent; listener-delivery-only
+  cost is not resolved) — no stronger claim appears in this document
+  than in the 18H section itself.
+- **CI** (18J, pulled forward into 18H): PR #25, run `32035631246`
+  (first push) and `32035918122` (confirmed current as of this 18I
+  pass — re-checked via `gh pr view 25`, `mergeStateStatus: CLEAN`,
+  all three checks `SUCCESS` on the latest commit, not a stale run).
+
+### 18I-10: benchmark interpretation reconciled
+
+No new benchmark claim is made in 18I. The 18H section's own bounded
+conclusion stands: `no_scope` measurably and consistently reads below
+both scoped tiers on the real CI runner (4.318 µs vs. ~5.0 µs,
+Python 3.12.13); the listener-delivery-specific cost (tier 3 vs. tier
+2) remains unresolved by this benchmark's methodology. This is
+reported as the final Step 18 benchmark evidence, not superseded or
+strengthened here.
+
+### 18I-11: deferred risks re-reviewed
+
+`EVT-RACE-001` (global `EventBus` thread safety) and `EVT-FAIL-001`
+(listener-failure isolation) remain **Deferred**, both formally
+recorded with owner/current-behavior/revisit-trigger fields in the
+Deferred Risks table above and in ADR-022 itself. Neither risk is
+resolved, newly discovered, or reclassified by 18I — they are
+reconfirmed as accurately representing current repository behavior
+(verified by re-reading `events.py`: still no lock, no synchronization
+primitive, as of this pass).
+
+### 18I-12 through 18I-14: compatibility / security / dependency — scope note
+
+Full compatibility, security, and dependency review is **18K's job**,
+not 18I's — conflating them here would violate this project's own
+gate separation (evaluation is "did we prove it," not "is it safe to
+ship"). ADR-022 already contains preliminary Security and Dependency
+Review sections (Q12, and the dedicated Security/Dependency review
+sections); 18I confirms these preliminary sections exist and are
+internally consistent with the implementation as built (zero new
+runtime dependencies confirmed by 18E's diff: only `events.py`,
+`context.py`, `module.py`, and two `__init__.py` export lists changed,
+no new imports beyond the `TYPE_CHECKING`-guarded `EventScope`
+forward reference) — but does not perform the expanded 18K review
+itself.
+
+### 18I-15: documentation review — scope note
+
+Same boundary: ADR-022 exists and is internally complete (all 12
+decision-gate questions answered, Concurrency/Deferred Risks/CI
+strategy sections present); moving its Status to Accepted and updating
+the requirements matrix's evidence columns are 18K actions, not
+performed here.
+
+### 18I-16: evidence provenance — explicit trace for every headline claim
+
+| Claim | Provenance |
+|---|---|
+| `EventScope` isolates unrelated executions | SOURCE (independent listener ownership) + TEST (`EVT-ISOLATION-001`) + CI |
+| `EventBus` is thread-safe | **NOT ESTABLISHED** — explicitly, in the matrix, in ADR-022, and here |
+| 461 tests pass | CI-PROVEN (PR #25, all 3 Python versions) |
+| Scope-carrying has measurable overhead | BENCHMARK RESULT, CI-PROVEN, bounded interpretation only |
+| Listener-delivery-specific overhead is small | **NOT ESTABLISHED** — benchmark lacks resolution for this specific sub-claim |
+| No production architecture change was required | VERIFIED (`git diff --stat` shows zero changes to `sequential.py`/`block.py`/`engine.py`) |
+| Step 18 is production-ready | **INVALID** — 18K and 18L have not run |
+| ADR-022 is Accepted | **INVALID** — Status field still reads Proposed |
+
+### 18I-17: unsupported claims identified
+
+None found in this document or in ADR-022 that lack a matrix row or
+explicit "not established" marker. This is itself worth stating
+plainly rather than assuming: the search was performed (re-reading
+every status cell in the Evidence Matrix above and cross-checking each
+against a named test, file, or CI run) and came back clean — not
+skipped.
+
+### 18I-18: evaluation ledger status
+
+This document (`evaluation/step18-evaluation.md`) is itself the
+updated ledger — no separate file created, consistent with the
+decision made before 18H.
+
+### 18I-19: local gates re-run for this pass
+
+Docs-only change (this section); no source touched. `ruff format
+--check evaluation/step18-evaluation.md` run and clean before
+committing.
+
+### 18I-20: CI evidence requirements for remaining steps
+
+18K's documentation changes (ADR-022 status, requirements matrix rows)
+and 18L's final diff/release gate will each need their own CI
+confirmation if they touch any file CI lints/type-checks/tests —
+requirements-matrix and ADR markdown changes do not require a new CI
+run to be truthful (they're prose, not executable claims), but any
+further source/test change would.
+
 ## Step 18 completion state (updated through 18H + real CI evidence)
 
 **Step 18 is NOT complete**, but its evidence base is now
@@ -674,14 +821,16 @@ only. `test (3.10)`/`test (3.11)`/`test (3.12)` all passed with every
 configured step green, including the newly-added Step 18 benchmark
 step and its artifact upload.
 
+**18I is now complete** (see the 18I — Final Evaluation section above:
+18I-1 through 18I-20, with an explicit evidence-provenance table and a
+confirmed-clean unsupported-claims check).
+
 Remaining before Step 18 can be marked Complete:
 
-- **18I** — this document's final evaluation pass, synthesizing
-  18A-18H (now including real CI evidence) against the frozen ADR-022
-  contract as a whole.
 - **18K** — documentation (ADR-022 → Accepted, requirements matrix
   A5/A10 evidence columns), full compatibility/security/dependency
-  review (expanding past the preliminary ADR-022 sections).
+  review (expanding past the preliminary ADR-022 sections 18I-12
+  through 18I-15 confirmed exist but did not expand).
 - **18L** — final diff/status/release gate, including the decision of
   whether/when PR #25 merges to `main` and whether a post-merge CI run
   (on `main` itself, not just the `pull_request` trigger) is also
