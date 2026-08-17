@@ -421,7 +421,10 @@ def test_no_provider_import_leaks_into_ragtorch_core() -> None:
     zero runtime dependencies."""
     from pathlib import Path
 
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10 has no stdlib tomllib (3.11+ only)
+        import tomli as tomllib  # type: ignore[no-redef]
 
     repo_root = Path(ragtorch.__file__).resolve().parents[2]
     pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text())
