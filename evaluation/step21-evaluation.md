@@ -1,16 +1,25 @@
 # Step 21 Evaluation — Event Concurrency Audit (EVT-RACE-001 / EVT-REENTRANT-001)
 
-Date: 2026-08-17 (21A-21K, local) — pending CI/merge
+Date: 2026-08-17 (21A-21K, local) — closed 2026-08-17 (post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
 
 This step's central result is **Outcome B**: the audit does not
 support implementing synchronization. No ADR-024, no production code
-change. The deliverable is deterministic characterization evidence and
-precise documentation. Remaining: push, PR, CI, merge, post-merge CI,
-final closure.
+change. PR #28 merged as `ab628db`; post-merge CI on `main` confirmed
+506/506 on 3.10/3.11/3.12 (run
+[32060057851](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32060057851)).
+Requirements matrix A73 added. **Precise conclusion, not to be
+paraphrased as "EventBus is thread-safe":** the library does not
+promise thread safety; deterministic adversarial testing found no new
+memory-corruption/concurrency defect requiring synchronization, and
+the one concurrent failure observed (`ValueError` from
+double-unsubscribe) is pre-existing API behavior. See the Closure
+section at the end of this document for the full gate-by-gate record,
+including a real PR CI failure that was found and fixed before merge,
+not hidden.
 
 ## Evidence vocabulary
 
@@ -255,11 +264,105 @@ Outcome-B step: evidence and documentation, zero production code.
   multi-threaded. No evidence justifies changing this; documented and
   tested, not fixed.
 
+## 21L — CI
+
+**First PR CI run FAILED** (real, not hidden): run
+[32057162636](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32057162636),
+commit `ac177c1` — `test (3.11)` failed on
+`test_concurrent_subscribe_and_publish_does_not_crash[EventBus]`
+(`publish_thread.join(timeout=15)` still alive after 15s), cascading a
+cancellation of `test (3.10)`/`test (3.12)`. Root cause: an unbounded
+listener-growth loop in the test itself made its runtime dependent on
+CI-runner speed — a test-design defect, not a product defect (see
+21E-21J above for the full root-cause analysis). Fixed in commit
+`35dce45` (bounded growth, generous timeout, verified stable across 5
+consecutive local runs before re-pushing).
+
+**Second PR CI run**: run
+[32059885394](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32059885394),
+commit `35dce45` — `test (3.10)`/`test (3.11)`/`test (3.12)` all
+`success`, 506/506 on each.
+
 ## Closure
 
-Pending: push, PR, CI (3.10/3.11/3.12), merge, post-merge CI
-verification, final closure record. Since no ADR-024 and no A-numbered
-requirements-matrix row is warranted (no new requirement was
-fulfilled — the existing `EVT-RACE-001` deferred-risk record was
-updated, not resolved), documentation closure for this step consists
-of the ADR-022 update already made above, not a new matrix row.
+### Merge
+
+PR #28 (`feat/step21-event-concurrency-contract` → `main`) merged via
+`gh pr merge 28 --merge` after confirming `MERGEABLE`/`mergeStateStatus: CLEAN`
+on head SHA `35dce45` with all three checks green. Merge commit
+verified directly (not trusted from PR metadata alone, per instruction):
+**`ab628db05161baa3baab5e735d3ee22231c5d759`**.
+
+### Post-merge CI
+
+Run [32060057851](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32060057851),
+`push` trigger, `headSha` confirmed as `ab628db` (the actual merge
+commit, via `gh run view --json headSha`). Per-job conclusions
+individually verified: `test (3.10)`/`test (3.11)`/`test (3.12)` all
+`success`, **506/506 passed on every version**.
+
+### Documentation closure
+
+Added **A73** to the requirements matrix, following the A68-A72
+convention, with wording that explicitly distinguishes "audited and
+intentionally not synchronized" from "thread-safe" — the exact
+distinction required, not paraphrased away. ADR-022's `EVT-RACE-001`
+entry (updated earlier in this branch) remains the authoritative home
+for the detailed findings; A73 cross-references it rather than
+duplicating the full analysis.
+
+### Final diff/scope review
+
+```
+git diff main...feat/step21-event-concurrency-contract --stat (pre-merge, both commits):
+ benchmarks/step21_event_concurrency_audit.py       |  95 ++++++++
+ docs/.../ADR-022-execution-scoped-event-delivery.md |  41 +++-
+ evaluation/step21-evaluation.md                    | 265+ (plus this closure section)
+ tests/unit/core/test_events.py                     | 192+ (plus the CI-fix delta)
+```
+
+`events.py`, `errors.py`, `module.py` — confirmed zero changes via
+`git diff main...feat/step21-event-concurrency-contract -- src/`
+returning empty output. This is the expected, correct footprint for a
+genuine Outcome-B step: evidence, characterization tests, and
+documentation, zero production code — plus one honestly-recorded,
+CI-caught, and properly-fixed test-design defect along the way.
+
+### Closure gate
+
+```
+□ Repository audit          PASS — 21A, 15 questions answered with evidence
+□ Architecture/design        PASS — Outcome B, evidence table (21B)
+□ Adversarial review          PASS — 21C, 15-item checklist recorded N/A in full
+□ ADR decision                  PASS — ADR-024 not required (reasoned); ADR-022 updated
+□ Public contract                 PASS — "no guarantee" explicitly, not "thread-safe"
+□ Implementation                    PASS — no production synchronization (Outcome B)
+□ Unit tests                          PASS — 10 new characterization tests, CI-proven
+□ Integration tests                     PASS — N/A, reasoned (18G's test already covers this)
+□ Failure/edge-case tests                 PASS — double-unsubscribe race + root cause, CI-proven
+□ Benchmark                                 PASS — two-tier, no threshold
+□ Evaluation                                  PASS — this document
+□ CI configured                                 PASS — .github/workflows/ci.yml (unmodified)
+□ CI executed (PR, 1st attempt)                   FAIL, then FIXED — real failure, not hidden
+□ CI executed (PR, 2nd attempt)                     PASS — run 32059885394
+□ CI executed (post-merge)                            PASS — run 32060057851
+□ Documentation                                         PASS — ADR-022 updated, A73 added
+□ Compatibility                                           PASS — zero API/behavior change
+□ Security                                                  PASS — 21O, no new findings
+□ Dependencies                                                PASS — zero manifest changes
+□ Diff review                                                   PASS — final diff/scope review above
+□ No accidental changes                                           PASS
+
+ALL PASS → COMPLETE
+```
+
+**Step 21 status: COMPLETE.**
+
+**Precise conclusion, exactly as required, not paraphrased:** *The
+library does not promise thread safety; deterministic adversarial
+testing found no new memory-corruption/concurrency defect requiring
+synchronization, and the one concurrent failure observed
+(`ValueError` from double-unsubscribe) is pre-existing API behavior.*
+`EVT-RACE-001` remains open and Deferred — re-confirmed, not resolved.
+`EVT-REENTRANT-001` remains separately tracked and unaffected by this
+step.
