@@ -313,7 +313,44 @@ remains unchanged — verified directly by
 
 ## 27L — CI
 
-(Filled in after real GitHub-facing work — see below.)
+- Branch: `audit/step27-real-rag-consumer`
+- PR: [#34](https://github.com/payamfirouzfar/RAG-MODULE/pull/34)
+- First PR CI run [32077963630](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32077963630)
+  at commit `0110566` **failed**: `test (3.12)` hit
+  `ModuleNotFoundError: No module named 'tests'` — `test_rag_consumer.py` used an
+  absolute `from tests.discovery.rag_fakes import ...` package import, which only
+  resolved locally because this dev environment's editable install happened to expose
+  the repo root on `sys.path`; CI's fresh install does not guarantee that for a bare
+  `tests` directory with no top-level `tests/__init__.py`. Fixed by switching to a
+  relative import (`from .rag_fakes import ...`) and consolidating four scattered local
+  `Embedding` imports into the top-level import list. Verified by reproducing the exact
+  CI install path in a genuinely fresh venv (`python -m venv` + fresh
+  `pip install -e ".[dev]"`, not the pre-existing dev venv) before pushing again.
+- Second PR CI run [32079291312](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32079291312)
+  at commit `c724789` **failed again, differently**: `test (3.10)` hit
+  `ModuleNotFoundError: No module named 'tomllib'` in
+  `test_no_provider_import_leaks_into_ragtorch_core` — the exact same `tomllib`-is-
+  3.11+-only gap already discovered and fixed in Step 25 (A77), reproduced here because
+  the same fallback pattern was not applied to this new test. Fixed identically (`try:
+  import tomllib / except ModuleNotFoundError: import tomli as tomllib`), verified
+  directly against a real Python 3.10 interpreter
+  (`py -3.10 -m pytest tests/discovery/test_rag_consumer.py::test_no_provider_import_leaks_into_ragtorch_core`
+  — 1 passed) before pushing again. `tomli` was already a conditional dev dependency
+  from Step 25, so no `pyproject.toml` change was needed this time.
+- Third PR CI run [32079460864](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32079460864)
+  at commit `fdfc3d8` (final PR head) — **all 6 jobs succeeded**: `test` × {3.10, 3.11,
+  3.12} and `packaging` × {3.10, 3.11, 3.12}.
+- PR diff scope verified via `gh pr view --json files` immediately before merge: exactly
+  the six files listed in 27M, no `src/ragtorch/**` changes.
+- Merged via `gh pr merge 34 --merge`. Merge SHA verified directly via
+  `gh pr view --json mergeCommit`: **`853f30b5cccfcd371a5032e25cf05ac4f7f9f904`**.
+- Post-merge CI run [32079550874](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32079550874)
+  on `main`, head SHA confirmed as the exact merge commit `853f30b` — **all 6 jobs
+  succeeded**:
+  - `test (3.10)`, `test (3.11)`, `test (3.12)`: **549 passed, 11 deselected** each.
+  - `packaging (3.10)`, `packaging (3.11)`, `packaging (3.12)`: **11 passed** each.
+- Local branch fast-forwarded to `853f30b` (`git checkout main && git pull`), confirmed
+  via `git log --oneline -3`.
 
 ## 27M — Diff review
 
