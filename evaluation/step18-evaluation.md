@@ -106,10 +106,10 @@ not renamed here either.
 | 18H | Benchmark | Event delivery overhead measured (no scope / empty scope / active scope), corrected baseline (`context=None`, not `ExecutionContext()`) | ADR-022 Benchmark strategy | `benchmarks/step18_execution_scoped_events.py`; 3 local corrected runs (18H-C1) + real CI artifact from PR #25 run 32035631246 (Python 3.12.13: no_scope p50 4.318µs, empty/active ~5.0µs, +16% scope-check delta) | ✓ | ✓ (benchmark executed successfully and artifact uploaded on all 3 Python versions) | **Benchmark-proven, CI-proven** |
 | 18I | Evaluation | Step 18 behavior evaluated against the frozen ADR-022 contract as a whole, every claim traced to evidence | this document | 18I-1 through 18I-20 above, including an explicit provenance table and an unsupported-claims check | ✓ | N/A (docs-only synthesis; no new executable claim requiring CI) | **Locally verified (synthesis complete)** |
 | 18J | CI | Required CI gates pass on the repository's actual CI workflow, not a local approximation | `.github/workflows/ci.yml` | PR #25, run 32035631246 — `test (3.10)`, `test (3.11)`, `test (3.12)` all green, every configured step passed | ✓ | ✓ | **CI-proven** |
-| 18K | Docs | ADR-022 status moved to Accepted; requirements matrix A5/A10 evidence columns updated | requirements-matrix-v0.1.md | pending | pending | pending | Planned |
-| 18K | Compatibility | Full compatibility review recorded (API/behavioral/serialization/runtime) | — | pending | pending | pending | Planned |
-| 18K | Security | Full security review recorded (event payload exposure, cross-execution observability) | ADR-022 Security § (preliminary) | pending expanded review | pending | pending | Planned |
-| 18K | Dependencies | Dependency review recorded (expect: zero new dependencies) | ADR-022 Dependency review § | pending confirmation pass | pending | pending | Planned |
+| 18K | Docs | ADR-022 status moved to Accepted; requirements matrix A5/A10 evidence columns updated | requirements-matrix-v0.1.md | **Deliberately deferred to 18L** — repository audit (18K) found every prior ADR (e.g. ADR-021) and every filled matrix row (A65-A69) cites *post-merge* CI, not PR CI; PR #25 has not merged, so neither transition is legitimate yet | — | — | **Blocked on 18L merge** (not an omission — see 18K audit note below) |
+| 18K | Compatibility | Full compatibility review recorded (API/behavioral/serialization/runtime) | ADR-022 Compatibility § | ADR-022 "Expanded (18K, implementation-verified)" subsection: API/behavioral/serialization/runtime reviewed individually against the actual diff, not re-asserted from design intent | ✓ | ✓ (cites CI-proven facts already established, e.g. run `32037264224`) | **Complete** |
+| 18K | Security | Full security review recorded (event payload exposure, cross-execution observability) | ADR-022 Security § (preliminary) | ADR-022 "Expanded (18K, implementation-verified)" subsection: payload content re-grepped and confirmed unchanged, cross-execution observability confirmed as a narrowing not a widening, listener-retention/trust-boundary/no-new-introspection all explicitly addressed | ✓ | N/A (analysis of existing diff, no new executable claim) | **Complete** |
+| 18K | Dependencies | Dependency review recorded (expect: zero new dependencies) | ADR-022 Dependency review § | ADR-022 "Expanded (18K, implementation-verified)" subsection: `git diff` against every dependency manifest re-run and confirmed empty; `events.py` import block re-read directly | ✓ | N/A (manifest diff, no new executable claim) | **Complete** |
 | 18L | Release | Final diff/status/release gate | — | pending | pending | pending | Planned |
 
 ## Deferred Risks (mirrored from ADR-022; ADR-022 remains authoritative)
@@ -675,12 +675,12 @@ where that trace breaks down, rather than filling a gap with prose.
 
 ADR-022's Status field reads **Proposed** as of this writing
 (`docs/architecture/decisions/ADR-022-execution-scoped-event-delivery.md`,
-line 5) — unchanged since 18C. This is correct and intentional: ADR
-status moves to Accepted only in 18K, after documentation/
-compatibility/security/dependency review is complete, matching this
-project's established precedent (ADR-018 through ADR-021 all stayed
-Proposed through their implementation/test/CI phases). 18I does not
-change this.
+line 5) — unchanged since 18C. This is correct and intentional. (Note,
+corrected during 18K: the ADR status transition is gated on *post-merge*
+CI specifically, per ADR-021's own precedent, not merely on
+documentation/compatibility/security/dependency review being written —
+see 18K-1 below for the audit that established this precisely. 18I
+does not change ADR-022's status either way.)
 
 ### 18I-2: requirements matrix re-read against current repository state
 
@@ -811,6 +811,69 @@ requirements-matrix and ADR markdown changes do not require a new CI
 run to be truthful (they're prose, not executable claims), but any
 further source/test change would.
 
+## 18K — Documentation / Compatibility / Security / Dependency Review
+
+### 18K-1: repository audit before any change
+
+Before touching ADR-022's status or the requirements matrix, inspected
+how every prior ADR actually recorded its Accepted transition.
+`docs/architecture/decisions/ADR-021-ragmodule-graph-architecture.md`'s
+own Status section states explicitly: *"Accepted after real GitHub
+Actions post-merge CI confirmed on the actual merged `main` SHA — not
+from PR CI or local checks alone, per this project's standing rule
+that 'PR green is not proof.'"* Cross-checked against the requirements
+matrix: every filled-in row from A65 through A69 cites a **post-merge**
+`main` CI run ID and commit SHA in its evidence column, never a PR run.
+
+**Finding**: this is a hard, consistent precedent, not a one-off. PR #25
+has PR-scoped CI evidence only (`32037264224`, latest); it has not
+merged. Therefore **both** the ADR-022 Accepted transition and the
+A5/A10 evidence-column fill-in would be premature if done now — moving
+either would be the exact "PR green is not proof" mistake this
+project's own precedent exists to prevent.
+
+### 18K-2: scope decision
+
+Confirmed explicitly (not assumed): defer the ADR status change and
+matrix update to 18L (after merge + post-merge CI), and do the
+remaining 18K work now — expanded compatibility/security/dependency
+review — since that work is an analysis of the already-final diff and
+design, not dependent on merge state.
+
+### 18K-3: expanded compatibility/security/dependency review
+
+Performed and written directly into ADR-022 (not duplicated at length
+here — ADR-022 remains the authoritative architectural document; this
+ledger cites it). Each of the three sections now has a
+"Preliminary (18C, design-time)" subsection (unchanged, kept for
+history) and a new "Expanded (18K, implementation-verified)"
+subsection that re-verifies the original design-time claims against
+the actual merged diff:
+
+- **Security**: re-grepped every `payload=` construction site in
+  `module.py` — confirmed byte-identical to pre-ADR-022 `main` (only
+  `payload={"error": str(exc)}`, both branches); confirmed
+  `EventScope` never constructs/reads/transforms a payload, only
+  routes an already-built `Event`; confirmed cross-execution
+  observability is a *narrowing* of the pre-existing global-bus
+  default, not a new exposure; confirmed no `vars()`/`__dict__`
+  introspection exists anywhere in the diff.
+- **Dependencies**: re-ran `git diff main...feat/step18-event-scoped-delivery-audit`
+  against every dependency manifest file — zero changes, confirmed
+  directly, not assumed from the 18C-era claim.
+- **Compatibility**: API/behavioral/serialization/runtime reviewed as
+  four separate sub-questions per this project's standing compatibility
+  checklist, each answered with a specific diff citation or CI run ID
+  rather than a general "should be fine" statement.
+
+### 18K-4: what remains open
+
+ADR-022's Status field is **unchanged (still Proposed)**. Requirements
+matrix A5/A10 rows are **unchanged**. Both are explicitly deferred to
+18L, where the merge decision and post-merge CI confirmation belong —
+see the Evidence Matrix's 18K/Docs row above, marked "Blocked on 18L
+merge," not silently marked Complete.
+
 ## Step 18 completion state (updated through 18H + real CI evidence)
 
 **Step 18 is NOT complete**, but its evidence base is now
@@ -825,16 +888,22 @@ step and its artifact upload.
 18I-1 through 18I-20, with an explicit evidence-provenance table and a
 confirmed-clean unsupported-claims check).
 
+**18K is now complete for everything not blocked on merge state**: the
+expanded compatibility/security/dependency review is written directly
+into ADR-022 (18K-3), each claim re-verified against the actual diff
+rather than re-asserted from 18C design intent. The ADR-022 Accepted
+transition and the A5/A10 requirements-matrix evidence-column update
+are **deliberately deferred to 18L** — 18K's own repository audit
+(18K-1) found this project's hard, consistent precedent (ADR-021 and
+every filled matrix row A65-A69) requires post-merge CI evidence for
+both, which does not exist yet for Step 18.
+
 Remaining before Step 18 can be marked Complete:
 
-- **18K** — documentation (ADR-022 → Accepted, requirements matrix
-  A5/A10 evidence columns), full compatibility/security/dependency
-  review (expanding past the preliminary ADR-022 sections 18I-12
-  through 18I-15 confirmed exist but did not expand).
-- **18L** — final diff/status/release gate, including the decision of
-  whether/when PR #25 merges to `main` and whether a post-merge CI run
-  (on `main` itself, not just the `pull_request` trigger) is also
-  required before final acceptance — consistent with this project's
+- **18L** — final diff/status/release gate: merge decision for PR #25,
+  post-merge CI confirmation on the actual merged `main` SHA, **then**
+  ADR-022 Status → Accepted and the A5/A10 evidence-column update
+  (both deferred here from 18K), consistent with this project's
   established precedent of treating pre-merge and post-merge CI as
   distinct evidence.
 

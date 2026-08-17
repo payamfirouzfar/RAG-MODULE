@@ -538,6 +538,8 @@ Risks (EVT-RACE-001) below.
 
 ## Security
 
+### Preliminary (18C, design-time)
+
 `EventScope.publish` performs exactly the operation `EventBus.publish`
 already establishes as trusted: calling caller-subscribed listener
 functions with an `Event`. No new data is added to `Event`'s existing
@@ -547,7 +549,48 @@ if anything, the opposite: a caller using `EventScope` gains a way to
 *avoid* incidentally observing unrelated executions' events, which the
 global-bus-only design forces on every subscriber today.
 
+### Expanded (18K, implementation-verified)
+
+Re-verified against the actual merged implementation, not re-asserted
+from design intent:
+
+- **`Event.payload` content is unchanged by this ADR.** Grepped every
+  `payload=` construction site in `module.py`: both remain
+  `payload={"error": str(exc)}` on the `MODULE_FAILED` path, in both
+  the `context is None` and `context is not None` branches —
+  byte-identical to pre-ADR-022 `main`. `EventScope` never constructs,
+  reads, or transforms a payload; it only routes an already-constructed
+  `Event` object to an additional destination (Decision section). No
+  new data-exposure surface exists because no new data exists.
+- **Cross-execution observability is opt-in, not automatic.** A
+  listener only receives events for executions whose caller explicitly
+  passed it the same `EventScope` instance (Q8). This is a *narrowing*
+  of the pre-existing default (the global bus already exposes every
+  execution's events to every global subscriber) — `EventScope`
+  strictly reduces, never increases, what an arbitrary listener can
+  observe by default.
+- **Listener retention of sensitive event objects**: unchanged from
+  `EventBus`'s pre-existing behavior — a listener can retain a
+  reference to any `Event` it receives (Python has no mechanism to
+  prevent this for either bus type), a pre-existing property of the
+  publish/subscribe pattern itself, not introduced or worsened by this
+  ADR.
+- **Trust boundary**: `EventScope`, like `EventBus`, executes
+  caller-subscribed callables synchronously and in-process — the trust
+  boundary is "code that can call `.subscribe()`," identical to today.
+  No new caller-untrusted input crosses into `EventScope`/`Event`
+  construction; `run_id`/`parent_run_id` are UUIDs generated internally
+  (`new_run_id()`), never user-supplied strings reflected back.
+- **No new secret-leakage path**: confirmed no `vars()`/`__dict__`
+  introspection was added anywhere in the diff (`git diff main...HEAD
+  -- src/` re-read in full for this review) — the only new code is
+  `EventScope`'s four methods (`__init__`/`subscribe`/`unsubscribe`/
+  `publish`) and the additive dual-publish calls in `Module.__call__`,
+  none of which read component internal state.
+
 ## Dependency review
+
+### Preliminary (18C, design-time)
 
 Zero new runtime dependencies. `events.py`'s new `EventScope` class
 and `context.py`'s new `event_scope` field use only what those two
@@ -555,7 +598,23 @@ files already import (standard library `dataclasses`, `typing`,
 `collections.abc`) — no provider SDK, no `threading`/`contextvars`
 (neither is used, per Q10/the rejected `contextvars` alternative).
 
+### Expanded (18K, implementation-verified)
+
+Re-confirmed against the actual merged diff, not re-asserted:
+`git diff main...feat/step18-event-scoped-delivery-audit -- pyproject.toml
+requirements.txt setup.py setup.cfg` returns **zero changes** — no
+dependency manifest was touched anywhere in this branch. Direct read of
+`events.py`'s import block confirms only `logging`, `time`,
+`collections.abc.Callable`, `dataclasses`, `enum.Enum`, `typing.Any` —
+all standard library, unchanged from before this ADR plus zero
+additions beyond what `EventScope` itself needs (which turned out to be
+nothing beyond what `EventBus` already imports). No dependency
+necessity/license/maintenance-status review is required because no
+dependency was added.
+
 ## Compatibility
+
+### Preliminary (18C, design-time)
 
 `EventBus`, `Event`, `EventType`, `event_bus()` — all unchanged in
 behavior; `EventScope` is a pure addition to `events.py`.
@@ -568,6 +627,40 @@ to `None` and `Module.__call__`'s new scoped-publish branch is a
 no-op whenever it is `None` (Q6). `Module.__call__`'s existing publish
 call sites, `Run`, `Trace`, `MetricsCollector`, `ExecutionEngine`,
 `Sequential`, `Block`, `RAGModule` — all unchanged.
+
+### Expanded (18K, implementation-verified)
+
+- **API**: existing imports unchanged (`EventScope` is a pure addition
+  to both `ragtorch.core.__all__` and `ragtorch.__all__`, verified by
+  API-01); existing signatures unchanged (`ExecutionContext.__init__`,
+  `Module.__call__`, `event_bus()` all keep their exact prior
+  parameter lists — `event_scope` is appended as a new, defaulted
+  dataclass field, which does not change any positional-argument
+  contract); existing defaults unchanged (every default value on every
+  pre-existing parameter is untouched); existing exceptions unchanged
+  (`ExecutionError`/`RegistryError` propagation paths in
+  `Module.__call__` are structurally identical to pre-ADR-022 `main`,
+  confirmed by the diff showing only additive lines around the
+  existing `try`/`except` blocks, no restructuring).
+- **Behavioral**: existing ordering preserved (global-bus publish
+  still happens first, unconditionally, exactly as before — the scoped
+  publish is a new line appended after it, never reordered ahead of
+  it); existing failure propagation preserved (COMPAT-01/COMPAT-02
+  regression tests, CI-proven, assert the pre-existing
+  `test_events.py` suite passes unmodified); existing observability
+  preserved (`log_event`/`Run`/`Trace`/`MetricsCollector` are untouched
+  by this diff — confirmed zero references to any of those names in
+  the changed lines of `events.py`/`context.py`/`module.py`).
+- **Serialization**: not applicable — neither `EventBus` nor the new
+  `EventScope` was, is, or is claimed to be serializable; `Event`
+  itself (a frozen dataclass) was already not addressed by any
+  pickle/JSON contract before this ADR, and remains unchanged.
+- **Runtime**: supported Python versions unaffected — CI-proven green
+  on 3.10/3.11/3.12 (PR #25, run `32037264224`); no new sync/async
+  distinction introduced (`EventScope.publish` is a plain synchronous
+  method, matching `EventBus.publish` exactly); no new thread/process
+  behavior claimed (see Concurrency section above — Claim B explicitly
+  states no new guarantee, not even an implicit one, is introduced).
 
 ## Testing strategy
 
