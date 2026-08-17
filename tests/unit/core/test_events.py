@@ -660,3 +660,195 @@ def test_listener_delivery_error_importable_from_core_and_root():
 
     assert RootLDE is ListenerDeliveryError
     assert CoreLDE is ListenerDeliveryError
+
+
+# ---------------------------------------------------------------------------
+# Step 21: EVT-RACE-001 concurrency audit -- deterministic (threading.Barrier,
+# never time.sleep), permanent characterization tests, not a proof of a
+# thread-safety guarantee.
+#
+# Repository audit + adversarial review (21A-21C) found:
+#   - Zero memory-corruption/crash hazards under aggressive concurrent
+#     subscribe/unsubscribe/publish churn (CPython's GIL protects every
+#     individual list operation; Step 20's publish()-time snapshot
+#     already isolates each call from concurrent mutation).
+#   - The one real finding -- concurrent double-unsubscribe() of the
+#     SAME listener from two threads races to a ValueError in the
+#     losing thread -- is PRE-EXISTING, SINGLE-THREADED behavior:
+#     unsubscribe() on an already-removed listener already raises
+#     ValueError with zero threads involved. Concurrency does not
+#     introduce a new failure mode here, it only makes an existing,
+#     already-undocumented single-threaded contract question
+#     (is unsubscribe() idempotent? no) reachable non-deterministically.
+#
+# Conclusion: no ADR-024, no synchronization primitive added -- the
+# evidence does not support it, matching SequentialExecutor's own
+# existing precedent (ADR-018) of explicitly documenting
+# "thread-safety... not claimed here" rather than adding a lock nothing
+# demonstrates is needed. See evaluation/step21-evaluation.md.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_concurrent_subscribe_does_not_corrupt_or_lose_registrations(bus_cls):
+    bus = bus_cls()
+    barrier = threading.Barrier(2)
+    iterations = 500
+
+    def subscribe_many():
+        barrier.wait(timeout=5)
+        for _ in range(iterations):
+            bus.subscribe(lambda e: None)
+
+    threads = [threading.Thread(target=subscribe_many) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+        assert not t.is_alive()
+
+    assert len(bus._listeners) == iterations * 2
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_concurrent_publish_delivers_every_event_no_loss_no_duplication(bus_cls):
+    bus = bus_cls()
+    lock = threading.Lock()
+    count = [0]
+
+    def listener(event: Event) -> None:
+        with lock:
+            count[0] += 1
+
+    bus.subscribe(listener)
+    barrier = threading.Barrier(4)
+    publishes_per_thread = 250
+
+    def publish_many():
+        barrier.wait(timeout=5)
+        for _ in range(publishes_per_thread):
+            bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    threads = [threading.Thread(target=publish_many) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=15)
+        assert not t.is_alive()
+
+    assert count[0] == publishes_per_thread * 4
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_concurrent_subscribe_and_publish_does_not_crash(bus_cls):
+    """publish()'s snapshot-before-iterating (ADR-023) is exercised
+    concurrently with subscribe() churn -- no crash, no corruption.
+    Not a claim that publish() sees a specified set of listeners under
+    concurrent mutation, only that nothing breaks."""
+    bus = bus_cls()
+
+    def listener(event: Event) -> None:
+        pass
+
+    barrier = threading.Barrier(2)
+    stop = threading.Event()
+    errors: list[BaseException] = []
+
+    # Capped, not unbounded: an unbounded churn_subscribe loop makes
+    # publish()'s cost grow with however many listeners accumulated by
+    # the time each publish() runs, which is CI-runner-speed-dependent
+    # and can blow past any fixed join() timeout on a slow/shared
+    # runner (this exact failure mode was caught by real CI, not
+    # invented) -- the point of this test is "does concurrent mutation
+    # crash publish()", not "how many listeners can we accumulate", so
+    # capping the growth preserves the test's actual intent while
+    # making its runtime bounded and CI-stable.
+    max_extra_listeners = 2_000
+
+    def churn_subscribe():
+        barrier.wait(timeout=5)
+        added = 0
+        while not stop.is_set() and added < max_extra_listeners:
+            bus.subscribe(listener)
+            added += 1
+
+    def churn_publish():
+        barrier.wait(timeout=5)
+        try:
+            for _ in range(2_000):
+                bus.publish(Event(EventType.MODULE_STARTED, "x"))
+        except BaseException as exc:  # noqa: BLE001 -- surfaced via errors, not swallowed
+            errors.append(exc)
+
+    subscribe_thread = threading.Thread(target=churn_subscribe)
+    publish_thread = threading.Thread(target=churn_publish)
+    subscribe_thread.start()
+    publish_thread.start()
+    publish_thread.join(timeout=60)
+    stop.set()
+    subscribe_thread.join(timeout=10)
+
+    assert not publish_thread.is_alive()
+    assert not subscribe_thread.is_alive()
+    assert errors == []
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_concurrent_unsubscribe_of_the_same_listener_can_race_to_valueerror(bus_cls):
+    """The one real finding from Step 21's audit: two threads racing to
+    unsubscribe() the SAME listener can have the losing thread raise
+    ValueError. This is deterministically reproducible (not a rare
+    timing accident) via threading.Barrier -- and it is PRE-EXISTING,
+    single-threaded behavior (see the paired single-threaded test
+    below), not a new concurrency-specific defect. Documented here as
+    a permanent characterization, not fixed -- unsubscribe() is not
+    idempotent, single- or multi-threaded, and no evidence currently
+    justifies changing that."""
+    bus = bus_cls()
+
+    def listener(event: Event) -> None:
+        pass
+
+    bus.subscribe(listener)
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    outcomes_lock = threading.Lock()
+
+    def unsubscribe_once():
+        barrier.wait(timeout=5)
+        try:
+            bus.unsubscribe(listener)
+            outcome = "ok"
+        except ValueError:
+            outcome = "ValueError"
+        with outcomes_lock:
+            outcomes.append(outcome)
+
+    threads = [threading.Thread(target=unsubscribe_once) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=5)
+        assert not t.is_alive()
+
+    # exactly one thread wins (removes it), the other loses (ValueError)
+    assert sorted(outcomes) == ["ValueError", "ok"]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_double_unsubscribe_already_raises_single_threaded(bus_cls):
+    """Pins the pre-existing, single-threaded root cause of the
+    concurrent finding above: unsubscribe() on an already-removed
+    listener raises ValueError with zero threads involved. Concurrency
+    doesn't introduce this -- it only makes it reachable
+    non-deterministically."""
+    bus = bus_cls()
+
+    def listener(event: Event) -> None:
+        pass
+
+    bus.subscribe(listener)
+    bus.unsubscribe(listener)
+
+    with pytest.raises(ValueError):
+        bus.unsubscribe(listener)
