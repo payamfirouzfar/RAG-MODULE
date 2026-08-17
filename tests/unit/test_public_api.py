@@ -58,6 +58,8 @@ def test_public_exports_present():
         "Event",
         "EventType",
         "EventBus",
+        "EventScope",
+        "ListenerDeliveryError",
         "event_bus",
         "__version__",
     }

@@ -33,7 +33,7 @@ from ragtorch import (
     Sequential,
     event_bus,
 )
-from ragtorch.core.errors import ExecutionError
+from ragtorch.core.errors import ExecutionError, ListenerDeliveryError
 
 
 class Retriever(Module):
@@ -489,3 +489,90 @@ def test_global_bus_current_concurrent_delivery_behavior_on_cpython():
     filtered = [e for e in received if e.run_id in (context_a.run_id, context_b.run_id)]
     assert len([e for e in filtered if e.run_id == context_a.run_id]) == 2
     assert len([e for e in filtered if e.run_id == context_b.run_id]) == 2
+
+
+# ---------------------------------------------------------------------------
+# ADR-023: listener-failure isolation through real Module.__call__/
+# Sequential composition paths -- not just direct EventBus/EventScope
+# unit tests. Confirms the precise, EMPIRICALLY VERIFIED (not assumed --
+# this ADR's own drafting got it wrong twice before checking directly)
+# claim from ADR-023's Non-goals: for all three event types
+# (MODULE_STARTED, MODULE_FINISHED, MODULE_FAILED), a raising listener
+# causes ListenerDeliveryError to propagate RAW, never wrapped as
+# ExecutionError -- including MODULE_FAILED's publish calls, which sit
+# lexically inside Module.__call__'s except block but are not thereby
+# caught by it (an except clause only catches exceptions from its own
+# try:, not from its own body).
+# ---------------------------------------------------------------------------
+
+
+def test_failing_listener_on_module_started_propagates_unwrapped():
+    scope = EventScope()
+
+    def failing_listener(event: Event) -> None:
+        if event.type is EventType.MODULE_STARTED:
+            raise RuntimeError("boom on start")
+
+    scope.subscribe(failing_listener)
+    context = ExecutionContext(event_scope=scope)
+
+    with pytest.raises(ListenerDeliveryError):
+        Retriever()("query", context=context)
+
+
+def test_failing_listener_on_module_finished_propagates_unwrapped():
+    scope = EventScope()
+
+    def failing_listener(event: Event) -> None:
+        if event.type is EventType.MODULE_FINISHED:
+            raise RuntimeError("boom on finish")
+
+    scope.subscribe(failing_listener)
+    context = ExecutionContext(event_scope=scope)
+
+    with pytest.raises(ListenerDeliveryError):
+        Retriever()("query", context=context)
+
+
+def test_failing_listener_on_module_failed_also_propagates_unwrapped():
+    scope = EventScope()
+
+    def failing_listener(event: Event) -> None:
+        if event.type is EventType.MODULE_FAILED:
+            raise RuntimeError("boom on failed")
+
+    scope.subscribe(failing_listener)
+    context = ExecutionContext(event_scope=scope)
+
+    # Even though this publish() call is lexically inside
+    # Module.__call__'s `except Exception as exc:` block, that clause
+    # only catches exceptions from forward() (the block's own try:),
+    # not exceptions raised by the block's own body -- so
+    # ListenerDeliveryError propagates raw here too, exactly like the
+    # other two event types. NOT wrapped as ExecutionError.
+    with pytest.raises(ListenerDeliveryError):
+        FailingStage()("query", context=context)
+
+
+def test_listener_failure_isolation_through_sequential_composition():
+    scope = EventScope()
+    received: list[Event] = []
+
+    def sometimes_failing(event: Event) -> None:
+        received.append(event)
+        if event.module_name == "Reranker" and event.type is EventType.MODULE_FINISHED:
+            raise RuntimeError("reranker listener failed")
+
+    scope.subscribe(sometimes_failing)
+    context = ExecutionContext(event_scope=scope)
+    pipeline = Sequential(Retriever(), Reranker())
+
+    with pytest.raises(ExecutionError):
+        pipeline("query", context=context)
+
+    # despite the listener raising on Reranker's MODULE_FINISHED event,
+    # every event up to and including that one was still recorded --
+    # isolate-and-continue held even through real Sequential composition.
+    module_names_seen = {e.module_name for e in received}
+    assert "Retriever" in module_names_seen
+    assert "Reranker" in module_names_seen
