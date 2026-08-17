@@ -2,8 +2,7 @@
 
 ## Status
 
-**Local implementation and verification: COMPLETE.**
-**GitHub-verified (PR CI, merge, post-merge CI): pending — this section will be updated after real evidence is obtained. Do not treat this document as closure until that section is filled in with actual run IDs and SHAs.**
+**Step 25: COMPLETE.** Local implementation, PR CI, merge, and post-merge CI on `main` are all evidence-backed (see Phase 10).
 
 Scope, per the Step 25 instruction: packaging/release infrastructure only. No LLM,
 embedding, vector store, multimodal RAG, Graph RAG, provider adapter, or
@@ -206,17 +205,39 @@ a local development artifact. Both are now closed with direct evidence. Appendin
 direct `grep` against the live file before use, not assumed) after GitHub-facing work
 completes, per the append-only convention — historical rows A1-A76 are not rewritten.
 
-## Phase 10 — CI / merge / post-merge (pending real evidence)
+## Phase 10 — CI / merge / post-merge (CI-proven)
 
-To be filled in after real GitHub-facing work:
+- PR: [#32](https://github.com/payamfirouzfar/RAG-MODULE/pull/32)
+- First PR CI run [32072204641](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32072204641)
+  at commit `e3d4698` **failed**: `packaging (3.10)` job failed with
+  `ModuleNotFoundError: No module named 'tomllib'` in
+  `test_dev_only_dependencies_are_not_runtime_dependencies` — `tomllib` is Python
+  3.11+-only stdlib, absent on 3.10. This was a real, previously-undetected defect (not
+  exercised locally because the dev `.venv`'s interpreter differed); root-caused and
+  fixed by falling back to the `tomli` backport (`try: import tomllib / except
+  ModuleNotFoundError: import tomli as tomllib`), declared as a conditional dev
+  dependency (`tomli>=2.0; python_version < '3.11'`) and installed directly in the CI
+  `packaging` job's tooling step (which intentionally does not use the `dev` extras).
+  Fix verified locally against a real Python 3.10.11 interpreter
+  (`py -3.10 -m pytest -q -m packaging ...::test_dev_only_dependencies_are_not_runtime_dependencies`
+  — 1 passed) before pushing, not merely assumed.
+- Second PR CI run [32072547308](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32072547308)
+  at commit `692cdef` (current PR head at merge time) — **all 6 jobs succeeded**:
+  `test` × {3.10, 3.11, 3.12} and `packaging` × {3.10, 3.11, 3.12}.
+- PR diff scope verified via `gh pr view --json files` immediately before merge: exactly
+  the six files listed in Phase 8, no `src/ragtorch/**` changes.
+- Merged via `gh pr merge 32 --merge`. Merge SHA verified directly via
+  `gh pr view --json mergeCommit`: **`a7ee77195b225e27ce543ae65d1f7cd092e50a0c`**.
+- Post-merge CI run [32072645810](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32072645810)
+  on `main`, head SHA confirmed as the exact merge commit `a7ee771` — **all 6 jobs
+  succeeded**:
+  - `test (3.10)`, `test (3.11)`, `test (3.12)`: **528 passed, 11 deselected** each
+    (collected 539 items / 11 deselected / 528 selected).
+  - `packaging (3.10)`, `packaging (3.11)`, `packaging (3.12)`: **11 passed** each; wheel
+    inspection reported **31 entries, all checks passed**; consumer smoke test passed on
+    all three.
+- Local branch fast-forwarded to `a7ee771` (`git checkout main && git pull`), confirmed
+  via `git log --oneline -3`.
 
-- PR CI run ID(s), exact head SHA, per-job conclusions (`test` × 3 Python versions,
-  `packaging` × 3 Python versions), exact test counts.
-- Merge SHA, verified directly via `gh pr view --json mergeCommit`.
-- Post-merge CI run ID(s) against the actual merged SHA on `main`, per-job conclusions,
-  exact test counts.
-- Final closure status.
-
-**Step 25 is not to be marked COMPLETE until this section is filled in with real
-evidence — local tests and local artifact verification alone are not sufficient per
-this project's standing rule.**
+**Final closure status: Step 25 COMPLETE**, evidenced by real post-merge GitHub Actions
+CI on the actual merged `main` commit — not local tests, not PR-CI alone.
