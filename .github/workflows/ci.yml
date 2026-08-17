@@ -79,7 +79,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install build + test tooling only (no editable install)
-        run: pip install build pytest
+        run: pip install build pytest "tomli>=2.0; python_version < '3.11'"
 
       - name: Build wheel and sdist
         run: python -m build --outdir dist .

@@ -244,7 +244,10 @@ def test_dev_only_dependencies_are_not_runtime_dependencies() -> None:
     the core runtime dependency list -- confirms the project's
     zero-runtime-dependency, provider-independent design is reflected
     accurately in pyproject.toml, not merely claimed in prose."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10 has no stdlib tomllib (3.11+ only)
+        import tomli as tomllib  # type: ignore[no-redef]
 
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     runtime_deps = pyproject["project"]["dependencies"]
