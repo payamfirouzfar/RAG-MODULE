@@ -1,10 +1,17 @@
 # Step 19 Evaluation — Module Registration Cycle Detection
 
-Date: 2026-08-17 (19A-19H, local) — updated through CI/merge
+Date: 2026-08-17 (19A-19H, local) — closed 2026-08-17 (post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
+
+PR #26 merged as `9c085be`; post-merge CI on `main` confirmed 474/474
+on 3.10/3.11/3.12 (run
+[32042082685](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32042082685)).
+Requirements matrix A71 added; "Next priority" item #4 marked done.
+See the Closure section at the end of this document for the full
+gate-by-gate record.
 
 Step 19 is not complete until 19A-19Q (repository audit through
 post-merge closure) have each independently satisfied their required
@@ -29,22 +36,22 @@ the project's evidence ledgers.
 | 19B | Selection | Candidate ranked and selected with explicit reasoning | this document / prior conversation turn | Module registration cycle detection selected over incremental-graph-validation (no workload evidence) and provider routing (no provider exists yet) | ✓ | N/A | Designed |
 | 19C | Changeability review | Replacement/extension/testability/async/serialization/observation/failure/isolation/API-stability/documentation all considered | prior conversation turn | private `_would_create_cycle` helper (not baked into `register_module`), iterative not recursive, identity-based visited set, no new public API, no new exception type | ✓ | N/A | Designed |
 | 19D | ADR decision | Does this require a new architectural decision? | Phase 19H default | **No.** Implementation required no new type, no new public API, no new exception, no lifecycle/concurrency change — purely a private helper enforcing an already-implied invariant ("the module hierarchy is a tree," A29). No ADR-023 created. | ✓ | N/A | N/A — explicitly not required, reasoned not assumed |
-| 19E | Public contract | A `Module` cannot be registered as a descendant of itself, directly or indirectly; `RegistryError` (existing type, no new exception) | prior conversation turn | `_would_create_cycle(parent, child)` in `module.py`, called from `register_module` only when `existing is None` (preserves same-instance re-registration) | ✓ | pending | Contract-frozen |
-| 19F | Implementation | `_would_create_cycle` + `register_module` integration | contract above | `src/ragtorch/core/module.py` — one new private function, 4 new lines in `register_module` | ✓ | pending | Implemented (local) |
-| 19G | Unit tests | Direct self-registration, 2-node cycle, multi-level cycle, valid acyclic registration, diamond sharing (not a cycle), same-instance re-registration preserved, different-instance duplicate still raises, non-Module still raises, rejected-cycle-does-not-mutate-graph, attribute-assignment also protected | contract above | `tests/unit/core/test_module.py`, 11 new tests, all passing locally (26/26 in file) | ✓ | pending | Test-proven (local) |
-| 19H | Integration tests | Cycle rejection through `Sequential`'s real registration path (not just bare `Module`), rejected cycle leaves the pipeline traversable and executable | contract above | `tests/integration/test_module_cycle_detection.py`, 3 tests, all passing locally | ✓ | pending | Test-proven (local) |
-| 19I | Failure safety | Rejected registration does not mutate `_modules`; `named_children()`/`named_modules()`/`snapshot()` remain correct after rejection | 19G/19H tests | `test_rejected_cycle_does_not_mutate_the_graph`, `test_rejected_cycle_leaves_architecture_traversable` (both unit and integration variants) | ✓ | pending | Test-proven (local) |
-| 19J | Regression | Existing `test_module.py` suite (pre-Step-19) passes unchanged | — | All 15 pre-existing tests in `test_module.py` pass unmodified; full suite 474/474 (461 pre-Step-19 + 13 new: 11 unit + 2 integration) | ✓ | pending | Test-proven (local) |
-| 19K | Quality | Lint/format/mypy clean | — | `ruff check .`, `ruff format --check .`, `mypy` (bare, CI-scoped) all clean | ✓ | pending | Locally verified |
-| 19L | Benchmark | Registration-time cost of cycle detection as subtree size grows | Phase 19G philosophy — measure, don't threshold | `benchmarks/step19_module_cycle_detection.py`: 1/10/100/1,000-node linear chains, ~3.9µs → ~12µs → ~102µs → ~959µs — roughly linear in subtree size, no surprise, no threshold asserted | ✓ | pending (file-only, matching the 12-of-13 majority precedent Step 18's own 18H-1/18H-2 audit established) | Benchmark-proven (local) |
-| 19M | Evaluation | This document | this document | Evidence matrix above, provenance traced to specific test names/files | ✓ | N/A | In progress |
-| 19N | CI | Actual GitHub Actions execution, not local approximation | `.github/workflows/ci.yml` (unmodified — no new CI step needed; existing "Unit and integration tests" step covers 19G/19H automatically) | pending push/PR | — | pending | Planned |
-| 19O | Documentation | Requirements matrix row (A71, deferred until post-merge CI per Step 18's own precedent) | requirements-matrix-v0.1.md | **Deliberately deferred** — same precedent discovered during Step 18's 18K-1 audit (every filled A-row cites post-merge CI) applies here | — | — | Blocked on merge, by design |
-| 19P | Compatibility | `Module`/`RegistryError` API unchanged; existing valid trees unchanged; duplicate-registration behavior unchanged; execution/snapshot/inspection unchanged | see Compatibility review below | reviewed against actual diff | ✓ | pending | Locally verified |
-| 19Q | Security | Cycle rejection prevents unbounded traversal/recursion; no new externally observable data | see Security review below | reviewed against actual diff | ✓ | N/A | Locally verified |
-| 19R | Dependencies | No new dependencies | `pyproject.toml` diff | `git diff` against every manifest file — empty | ✓ | N/A | Locally verified |
-| 19S | Diff review | Only intended files changed | `git diff --stat` | see Diff review below | ✓ | N/A | Locally verified |
-| 19T | Closure | Merge + post-merge CI | — | pending | — | pending | Planned |
+| 19E | Public contract | A `Module` cannot be registered as a descendant of itself, directly or indirectly; `RegistryError` (existing type, no new exception) | prior conversation turn | `_would_create_cycle(parent, child)` in `module.py`, called from `register_module` only when `existing is None` (preserves same-instance re-registration) | ✓ | ✓ (PR #26, post-merge run 32042082685) | **Contract-frozen, CI-proven** |
+| 19F | Implementation | `_would_create_cycle` + `register_module` integration | contract above | `src/ragtorch/core/module.py` — one new private function, 4 new lines in `register_module` | ✓ | ✓ | **Implemented, CI-proven** |
+| 19G | Unit tests | Direct self-registration, 2-node cycle, multi-level cycle, valid acyclic registration, diamond sharing (not a cycle), same-instance re-registration preserved, different-instance duplicate still raises, non-Module still raises, rejected-cycle-does-not-mutate-graph, attribute-assignment also protected | contract above | `tests/unit/core/test_module.py`, 11 new tests, all passing locally (26/26 in file) and in CI | ✓ | ✓ (part of "Unit and integration tests" step, all 3 Python versions) | **Test-proven, CI-proven** |
+| 19H | Integration tests | Cycle rejection through `Sequential`'s real registration path (not just bare `Module`), rejected cycle leaves the pipeline traversable and executable | contract above | `tests/integration/test_module_cycle_detection.py`, 3 tests, all passing locally and in CI | ✓ | ✓ (all 3 Python versions) | **Test-proven, CI-proven** |
+| 19I | Failure safety | Rejected registration does not mutate `_modules`; `named_children()`/`named_modules()`/`snapshot()` remain correct after rejection | 19G/19H tests | `test_rejected_cycle_does_not_mutate_the_graph`, `test_rejected_cycle_leaves_architecture_traversable` (both unit and integration variants) | ✓ | ✓ | **Test-proven, CI-proven** |
+| 19J | Regression | Existing `test_module.py` suite (pre-Step-19) passes unchanged | — | All 15 pre-existing tests in `test_module.py` pass unmodified; full suite 474/474 (461 pre-Step-19 + 13 new: 11 unit + 2 integration), confirmed identical count in PR CI and post-merge CI | ✓ | ✓ (474/474 on all 3 Python versions, both PR run 32041946477 and post-merge run 32042082685) | **Test-proven, CI-proven** |
+| 19K | Quality | Lint/format/mypy clean | — | `ruff check .`, `ruff format --check .`, `mypy` (bare, CI-scoped) all clean | ✓ | ✓ ("Check formatting"/"Lint"/"Type check" steps, all 3 Python versions) | **CI-proven** |
+| 19L | Benchmark | Registration-time cost of cycle detection as subtree size grows | Phase 19G philosophy — measure, don't threshold | `benchmarks/step19_module_cycle_detection.py`: 1/10/100/1,000-node linear chains, ~3.9µs → ~12µs → ~102µs → ~959µs — roughly linear in subtree size, no surprise, no threshold asserted | ✓ | N/A (file-only, matching the 12-of-13 majority precedent Step 18's own 18H-1/18H-2 audit established — deliberately not wired into CI) | **Benchmark-proven (local, by design not CI-wired)** |
+| 19M | Evaluation | This document | this document | Evidence matrix above, provenance traced to specific test names/files/CI runs | ✓ | N/A | Complete |
+| 19N | CI | Actual GitHub Actions execution, not local approximation | `.github/workflows/ci.yml` (unmodified — no new CI step needed) | PR #26 run [32041946477](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32041946477) (pre-merge) + post-merge `main` run [32042082685](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32042082685) on merge commit `9c085be`, 474/474 on 3.10/3.11/3.12 | ✓ | ✓ (both pre- and post-merge) | **CI-proven (post-merge)** |
+| 19O | Documentation | Requirements matrix row (A71) | requirements-matrix-v0.1.md | A71 added following the A68/A69/A70 "new row cross-references and fulfills an old gap" convention, citing post-merge CI run 32042082685/commit `9c085be`; "Next priority" item #4 marked done | ✓ | ✓ (cites the post-merge run itself) | **Complete** |
+| 19P | Compatibility | `Module`/`RegistryError` API unchanged; existing valid trees unchanged; duplicate-registration behavior unchanged; execution/snapshot/inspection unchanged | see Compatibility review below | reviewed against actual diff; all 15 pre-existing `test_module.py` tests pass unmodified in CI | ✓ | ✓ | **Complete** |
+| 19Q | Security | Cycle rejection prevents unbounded traversal/recursion; no new externally observable data | see Security review below | reviewed against actual diff | ✓ | N/A | Complete |
+| 19R | Dependencies | No new dependencies | `pyproject.toml` diff | `git diff` against every manifest file — empty | ✓ | N/A | Complete |
+| 19S | Diff review | Only intended files changed | `git diff --stat` | see Diff review below; final closure diff review below | ✓ | N/A | Complete |
+| 19T | Closure | Merge + post-merge CI | — | PR #26 merged as `9c085be`; post-merge CI confirmed (run 32042082685, 474/474, 3.10/3.11/3.12); A71 added; see Closure section below | ✓ | ✓ | **Complete** |
 
 ## Public contract (frozen)
 
@@ -188,12 +195,89 @@ node). Result: 3.9µs → 12.1µs → 102µs → 959µs — consistent with line
 matching the majority (12 of 13) file-only benchmark precedent this
 project established during Step 18's own 18H-1/18H-2 audit.
 
-## What remains before Step 19 can be marked Complete
+## Closure
 
-- **19N** — push branch, open PR, real CI execution (not local
-  approximation) on all three Python versions.
-- **19O** — requirements matrix A71 row, deliberately deferred until
-  post-merge CI evidence exists (same precedent discovered in Step
-  18's 18K-1).
-- **19T** — merge, post-merge CI confirmation on the actual merged
-  `main` SHA, then final closure record.
+### Merge
+
+PR #26 (`feat/step19-module-cycle-detection` → `main`) merged via
+`gh pr merge 26 --merge` after confirming its head SHA (`d263db0`) was
+`MERGEABLE`/`mergeStateStatus: CLEAN` with all three PR checks
+`SUCCESS` (run `32041946477`, 474/474 on 3.10/3.11/3.12). Merge
+commit: **`9c085be2f5187a829d09d10b543edd502dac20fb`**.
+
+GitHub's API returned intermittent `503` errors during both PR
+creation and merge — handled by retrying with backoff (via a
+background polling loop, not by fabricating success) until each
+operation genuinely succeeded; confirmed via `gh pr view`/`gh pr merge`
+output, not assumed.
+
+### Post-merge CI confirmation
+
+Real post-merge run on `main` itself: **run `32042082685`**, `push`
+trigger, triggered automatically by the merge, `headSha` confirmed as
+`9c085be` (the actual merge commit, verified via `gh run view --json
+headSha`). Result: `test (3.10)`/`test (3.11)`/`test (3.12)` all
+`success`, **474/474 passed on every version** (log lines pulled
+directly via `gh run view --log`), lint clean on all three.
+
+### Documentation
+
+`docs/architecture/requirements-matrix-v0.1.md`: added **A71**,
+following the A68/A69/A70 "new row cross-references and fulfills an
+old gap" convention (A29's original row stays historically frozen);
+"Next priority" item #4 marked done with a cross-reference, matching
+the same strikethrough convention used for item #1 during Step 18.
+
+### Final diff/scope review
+
+```
+git status --short   (on main, post-merge, post-doc-update)
+```
+
+Files touched across the entire Step 19 sequence, confirmed against
+the actual merge commit's diff (`git show 9c085be --stat`) plus this
+final doc-update pass:
+
+- `src/ragtorch/core/module.py` — one new private function
+  (`_would_create_cycle`), 4 new lines in `register_module`. No other
+  `src/` file touched.
+- `tests/unit/core/test_module.py` — 11 new tests, no changes to any
+  pre-existing test.
+- `tests/integration/test_module_cycle_detection.py` — new file, 3
+  tests.
+- `benchmarks/step19_module_cycle_detection.py` — new, measurement
+  only, not wired into CI.
+- `evaluation/step19-evaluation.md` — new, this ledger.
+- `docs/architecture/requirements-matrix-v0.1.md` — A71 added,
+  "Next priority" item #4 marked done (this final pass, post-merge).
+
+No accidental changes, no generated artifacts, no debug code, no
+skipped tests, no weakened assertions — every file individually
+traceable to a specific gate in this ledger. No ADR file created or
+modified (19D: reasoned not to require one).
+
+### Closure gate
+
+```
+□ Contract              PASS — 19E, CI-proven (32042082685)
+□ Implementation        PASS — 19F, CI-proven
+□ Unit tests             PASS — 11 tests, CI-proven
+□ Integration tests      PASS — 3 tests, CI-proven
+□ Failure tests          PASS — 19I, CI-proven
+□ Benchmark               PASS — 19L, local by design (matches majority precedent)
+□ Evaluation               PASS — this document
+□ CI configured             PASS — .github/workflows/ci.yml (unmodified, already sufficient)
+□ CI executed (PR)          PASS — run 32041946477
+□ CI executed (post-merge)  PASS — run 32042082685
+□ Documentation               PASS — A71 added, "Next priority" #4 closed
+□ Compatibility                 PASS — 19P, all pre-existing tests unmodified
+□ Security                        PASS — 19Q
+□ Dependencies                      PASS — 19R, zero manifest changes
+□ Diff review                        PASS — final diff/scope review above
+□ ADR decision                        PASS — reasoned N/A, not skipped (19D)
+□ No accidental changes                PASS
+
+ALL PASS → COMPLETE
+```
+
+**Step 19 status: COMPLETE.**
