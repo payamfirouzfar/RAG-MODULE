@@ -1,17 +1,20 @@
 # Step 23 Evaluation — CompositionGraph Incremental Validation Audit (A61)
 
-Date: 2026-08-17 (23A-23F, local) — pending CI/merge
+Date: 2026-08-17 (23A-23F, local) — closed 2026-08-17 (post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
 
 This step's central result is **Outcome A**: no real workload
 demonstrates that `CompositionGraph`'s full-revalidation-per-update
-cost matters. No ADR-024, no production code change. The deliverable
-is a workload model built from repository evidence, a dedicated
-benchmark, a design-space comparison, and precise documentation.
-Remaining: push, PR, CI, merge, post-merge CI, final closure.
+cost matters. No ADR-024, no production code change. PR #30 merged as
+`ba726fb`; post-merge CI on `main` confirmed 522/522 on 3.10/3.11/3.12
+(run
+[32063303843](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32063303843)).
+Requirements matrix A75 added, A61 left untouched per the append-only
+convention. See the Closure section at the end of this document for
+the full gate-by-gate record.
 
 ## Evidence vocabulary
 
@@ -246,14 +249,80 @@ confirmed unmodified. This is the expected, correct footprint for a
 genuine Outcome-A step: evidence and documentation only, zero
 production code.
 
+## CI
+
+**PR CI**: run [32063172185](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32063172185),
+`test (3.10)`/`test (3.11)`/`test (3.12)` all `success`, 522/522, on
+head SHA `f9386f6`. Passed on the first attempt.
+
 ## Closure
 
-Pending: push, PR, CI (3.10/3.11/3.12), merge, post-merge CI
-verification, final closure record. A61's evidence column will be
-updated (not rewritten — append-only, following the same convention
-Steps 21/22 established for `EVT-RACE-001`/`EVT-REENTRANT-001`) with a
-pointer to this audit once CI evidence exists. Whether a new
-requirements-matrix row (A75) is warranted, versus updating A61's
-existing evidence in place, will be decided during closure by checking
-which convention the project's own history actually uses for an
-audit that reconfirms rather than newly fulfills a named limitation.
+### Merge
+
+PR #30 (`audit/step23-composition-graph-update-audit` → `main`) merged
+via `gh pr merge 30 --merge` after confirming `MERGEABLE`/
+`mergeStateStatus: CLEAN` on head SHA `f9386f6` with all three checks
+green. Merge commit verified directly (not trusted from PR metadata
+alone): **`ba726fb3ed8fdd4b05b5d38c6920304999c1d833`**.
+
+### Post-merge CI
+
+Run [32063303843](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32063303843),
+`push` trigger, `headSha` confirmed as `ba726fb` (the actual merge
+commit, via `gh run view --json headSha`). Per-job conclusions
+individually verified: `test (3.10)`/`test (3.11)`/`test (3.12)` all
+`success`, **522/522 passed on every version**.
+
+### Documentation closure
+
+Added **A75** to the requirements matrix, following the A68-A74
+convention exactly (checked directly, not assumed): A73/A74 both used
+a new append-only row cross-referencing the deferred-risk record they
+audited, rather than editing the historically-frozen original row
+(A5/A10/A29 stay untouched under A70/A71, matching this precedent).
+A61's own text remains untouched. A75 cross-references
+`evaluation/step23-evaluation.md` as the authoritative evidence record.
+
+### Final diff/scope review
+
+```
+git diff main...audit/step23-composition-graph-update-audit --stat (pre-merge):
+ benchmarks/step23_composition_graph_update_audit.py | 176 ++++++++
+ evaluation/step23-evaluation.md                       | 261 ++++++++++
+```
+
+`src/ragtorch/core/composition.py` and every other production file —
+confirmed zero changes via `git diff main...audit/step23-composition-graph-update-audit -- src/`
+returning empty output. Genuine Outcome-A footprint: evidence and
+documentation only, zero production code, zero new tests (audit-only,
+test count unchanged from Step 22's 522).
+
+### Closure gate
+
+```
+□ Repository audit          PASS — Phase 1, zero real consumers confirmed via grep
+□ Workload model               PASS — Phase 2, 6 workloads, evidence-graded
+□ Baseline benchmark             PASS — Phase 3, six-workload dedicated benchmark
+□ Design space                     PASS — Phase 4, 6 alternatives x 18 criteria
+□ Adversarial review                 PASS — Phase 5, 20-item checklist against best candidate
+□ Decision                             PASS — Phase 6, Outcome A, reasoned
+□ Compatibility                          PASS — zero API/behavior change
+□ Security                                 PASS — no production change, no new surface
+□ Dependencies                               PASS — zero manifest changes
+□ CI executed (PR)                             PASS — run 32063172185
+□ CI executed (post-merge)                       PASS — run 32063303843
+□ Documentation                                    PASS — A75 added, A61 untouched
+□ Diff review                                        PASS — final diff/scope review above
+□ No accidental changes                                PASS
+
+ALL PASS → COMPLETE
+```
+
+**Step 23 status: COMPLETE.**
+
+**Precise conclusion, exactly as required, not paraphrased:** *No
+optimization was made; the audit found no evidence any optimization is
+needed, and documented precisely why, including the one synthetic
+workload (chained construction) where the current cost genuinely would
+compound if a real caller ever did this.* A61 remains open and
+Deferred — re-confirmed, not resolved.
