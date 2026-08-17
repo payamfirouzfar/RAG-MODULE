@@ -5,6 +5,7 @@ import threading
 import pytest
 
 from ragtorch.core.context import ExecutionContext
+from ragtorch.core.errors import ListenerDeliveryError
 from ragtorch.core.events import Event, EventBus, EventScope, EventType
 from ragtorch.core.module import Module, event_bus
 from ragtorch.core.sequential import Sequential
@@ -388,11 +389,25 @@ def test_dual_delivery_does_not_assert_ordering():
 
 
 # ---------------------------------------------------------------------------
-# ADR-022: failure short-circuits subsequent delivery (EVT-FAILSTOP)
+# ADR-023: listener-failure isolation supersedes ADR-022's EVT-FAILSTOP
+# short-circuit contract -- a raising global-bus listener no longer
+# prevents scope delivery; both destinations still fire, and failures
+# from either are reported via ListenerDeliveryError rather than the
+# raw listener exception propagating and stopping delivery.
 # ---------------------------------------------------------------------------
 
 
-def test_global_listener_failure_prevents_scope_delivery():
+def test_global_listener_failure_still_prevents_scope_delivery_through_module_call():
+    """ADR-023 isolates listener failures WITHIN one EventBus/EventScope
+    .publish() call, but Module.__call__'s dual-publish (ADR-022) is two
+    separate, sequential, unwrapped statements: _bus.publish(started)
+    then scope.publish(started). A raising global-bus listener now
+    raises ListenerDeliveryError (not the raw listener exception), but
+    that still prevents the second statement (scope.publish) from
+    running -- Module.__call__ itself is explicitly untouched by
+    ADR-023 (see its Non-goals). This is a real, named scope boundary,
+    not an oversight: fixing the cross-call sequencing would be an
+    ADR-022 change, out of scope here."""
     scope = EventScope()
     scoped_events: list[Event] = []
     scope.subscribe(scoped_events.append)
@@ -404,15 +419,36 @@ def test_global_listener_failure_prevents_scope_delivery():
     bus.subscribe(failing_listener)
     try:
         context = ExecutionContext(event_scope=scope)
-        with pytest.raises(RuntimeError, match="global listener failed"):
+        with pytest.raises(ListenerDeliveryError):
             ContextEcho()(1, context=context)
     finally:
         bus.unsubscribe(failing_listener)
 
+    # unchanged from before ADR-023: Module.__call__'s dual-publish
+    # sequencing means the scope never sees this event when the
+    # global bus's own publish() call raises first.
     assert scoped_events == []
 
 
-def test_scope_listener_failure_propagates():
+def test_event_scope_itself_isolates_from_a_failing_global_bus_listener():
+    """Unlike the Module.__call__ dual-publish case above, calling
+    EventScope.publish() directly (not through Module.__call__) is
+    fully independent of the global EventBus -- the two were never
+    coupled at that level. This isolates the claim: ADR-023's
+    isolation guarantee holds for each publish() call in isolation;
+    the Module.__call__ sequencing gap above is a separate, narrower,
+    named limitation."""
+    scope = EventScope()
+    scoped_events: list[Event] = []
+    scope.subscribe(scoped_events.append)
+
+    event = Event(EventType.MODULE_STARTED, "x")
+    scope.publish(event)  # no global bus involved at all
+
+    assert scoped_events == [event]
+
+
+def test_scope_listener_failure_raises_listener_delivery_error():
     scope = EventScope()
 
     def failing_listener(event: Event) -> None:
@@ -421,11 +457,11 @@ def test_scope_listener_failure_propagates():
     scope.subscribe(failing_listener)
     context = ExecutionContext(event_scope=scope)
 
-    with pytest.raises(RuntimeError, match="scope listener failed"):
+    with pytest.raises(ListenerDeliveryError, match="scope listener failed"):
         ContextEcho()(1, context=context)
 
 
-def test_event_scope_preserves_listener_exception_behavior():
+def test_event_scope_isolates_listener_exceptions():
     scope = EventScope()
 
     def failing_listener(event: Event) -> None:
@@ -433,8 +469,176 @@ def test_event_scope_preserves_listener_exception_behavior():
 
     scope.subscribe(failing_listener)
 
-    with pytest.raises(RuntimeError, match="listener failed"):
+    with pytest.raises(ListenerDeliveryError, match="listener failed"):
         scope.publish(Event(EventType.MODULE_STARTED, "x"))
+
+
+# ---------------------------------------------------------------------------
+# ADR-023: listener-failure isolation contract (FAIL-ISO-*)
+# Applied identically to both EventBus and EventScope (structurally
+# identical publish() implementations) -- parametrized where practical.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_01_no_listener_raises_publish_returns_normally(bus_cls):
+    bus = bus_cls()
+    received: list[Event] = []
+    bus.subscribe(received.append)
+
+    event = Event(EventType.MODULE_STARTED, "x")
+    bus.publish(event)  # must not raise
+
+    assert received == [event]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_02_one_listener_raises_others_still_run(bus_cls):
+    bus = bus_cls()
+    received: list[Event] = []
+
+    def failing(event: Event) -> None:
+        raise RuntimeError("boom")
+
+    bus.subscribe(failing)
+    bus.subscribe(received.append)
+
+    with pytest.raises(ListenerDeliveryError) as exc_info:
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    assert received  # the non-raising listener still ran
+    assert len(exc_info.value.failures) == 1
+    assert exc_info.value.failures[0][0] is failing
+    assert isinstance(exc_info.value.failures[0][1], RuntimeError)
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_03_multiple_listeners_raise_all_recorded_in_order(bus_cls):
+    bus = bus_cls()
+
+    def failing_a(event: Event) -> None:
+        raise ValueError("a")
+
+    def failing_b(event: Event) -> None:
+        raise TypeError("b")
+
+    bus.subscribe(failing_a)
+    bus.subscribe(failing_b)
+
+    with pytest.raises(ListenerDeliveryError) as exc_info:
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    assert [listener for listener, _ in exc_info.value.failures] == [
+        failing_a,
+        failing_b,
+    ]
+    assert [type(exc) for _, exc in exc_info.value.failures] == [ValueError, TypeError]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_04_later_listeners_side_effects_still_happen(bus_cls):
+    bus = bus_cls()
+    mutated: list[str] = []
+
+    def failing(event: Event) -> None:
+        raise RuntimeError("boom")
+
+    def mutates(event: Event) -> None:
+        mutated.append("ran")
+
+    bus.subscribe(failing)
+    bus.subscribe(mutates)
+
+    with pytest.raises(ListenerDeliveryError):
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    assert mutated == ["ran"]
+
+
+class _CustomBaseException(BaseException):
+    pass
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_05_non_exception_base_exception_is_not_caught(bus_cls):
+    bus = bus_cls()
+    received: list[Event] = []
+
+    def raises_base_exception(event: Event) -> None:
+        raise _CustomBaseException("not an Exception subclass")
+
+    def never_reached(event: Event) -> None:
+        received.append(event)
+
+    bus.subscribe(raises_base_exception)
+    bus.subscribe(never_reached)
+
+    with pytest.raises(_CustomBaseException):
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    # unlike Exception, a BaseException stops delivery immediately --
+    # the listener after it never runs.
+    assert received == []
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_06_unsubscribing_a_listener_during_publish_still_runs_it(bus_cls):
+    bus = bus_cls()
+    order: list[str] = []
+
+    def a(event: Event) -> None:
+        order.append("a")
+        bus.unsubscribe(b)
+
+    def b(event: Event) -> None:
+        order.append("b")
+
+    def c(event: Event) -> None:
+        order.append("c")
+
+    bus.subscribe(a)
+    bus.subscribe(b)
+    bus.subscribe(c)
+    bus.publish(Event(EventType.MODULE_STARTED, "x"))
+
+    # snapshot semantics (ADR-023): b was subscribed at the start of
+    # this publish() call, so it still runs, unlike pre-ADR-023
+    # live-iteration behavior which silently skipped it.
+    assert order == ["a", "b", "c"]
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_07_subscribing_a_listener_during_publish_does_not_run_it_yet(bus_cls):
+    bus = bus_cls()
+    order: list[str] = []
+
+    def late(event: Event) -> None:
+        order.append("late")
+
+    def a(event: Event) -> None:
+        order.append("a")
+        bus.subscribe(late)
+
+    bus.subscribe(a)
+    bus.publish(Event(EventType.MODULE_STARTED, "x"))
+    assert order == ["a"]  # late was not invoked by this call
+
+    order.clear()
+    bus.publish(Event(EventType.MODULE_STARTED, "y"))
+    assert order == ["a", "late"]  # only invoked starting next call
+
+
+@pytest.mark.parametrize("bus_cls", [EventBus, EventScope])
+def test_fail_iso_09_reentrant_publish_raises_clean_recursion_error(bus_cls):
+    bus = bus_cls()
+
+    def reenters(event: Event) -> None:
+        bus.publish(Event(EventType.MODULE_FINISHED, "y"))
+
+    bus.subscribe(reenters)
+
+    with pytest.raises(RecursionError):
+        bus.publish(Event(EventType.MODULE_STARTED, "x"))
 
 
 # ---------------------------------------------------------------------------
@@ -448,3 +652,11 @@ def test_event_scope_importable_from_core_and_root():
 
     assert RootEventScope is EventScope
     assert CoreEventScope is EventScope
+
+
+def test_listener_delivery_error_importable_from_core_and_root():
+    from ragtorch import ListenerDeliveryError as RootLDE
+    from ragtorch.core import ListenerDeliveryError as CoreLDE
+
+    assert RootLDE is ListenerDeliveryError
+    assert CoreLDE is ListenerDeliveryError

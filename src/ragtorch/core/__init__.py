@@ -11,6 +11,7 @@ from ragtorch.core.engine import ExecutionEngine, ExecutionResult, Observability
 from ragtorch.core.errors import (
     ConfigurationError,
     ExecutionError,
+    ListenerDeliveryError,
     ModuleError,
     RAGTorchError,
     RegistryError,
@@ -88,6 +89,7 @@ __all__ = [
     "ExecutionError",
     "RegistryError",
     "ValidationError",
+    "ListenerDeliveryError",
     "Event",
     "EventType",
     "EventBus",
