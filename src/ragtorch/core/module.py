@@ -17,6 +17,8 @@ from ragtorch.core.errors import ExecutionError, RegistryError
 from ragtorch.core.events import Event, EventBus, EventType
 
 if TYPE_CHECKING:
+    from ragtorch.core.block import Block
+    from ragtorch.core.composition import CompositionGraph
     from ragtorch.core.context import ExecutionContext
     from ragtorch.core.inspection import ArchitectureNode, ArchitectureSnapshot
 
@@ -243,6 +245,48 @@ def _snapshot_depth(node_id: str, children_by_parent: dict[str, list[str]]) -> i
 class RAGModule(Module):
     """Marker base class for top-level, RAG-specific systems.
 
-    Its marker semantics are retained for backward compatibility while the
-    v0.1 architecture defines a richer future Architecture contract.
+    Its marker semantics are retained for backward compatibility;
+    subclassing RAGModule and overriding forward() remains fully
+    supported and unchanged. from_graph() (ADR-021) is an additive
+    construction path for graph-backed architectures, delegating
+    execution entirely to Block -- no second execution system.
     """
+
+    @classmethod
+    def from_graph(
+        cls,
+        graph: CompositionGraph,
+        *,
+        input_node: str,
+        output_node: str,
+    ) -> RAGModule:
+        """Build a graph-backed RAGModule delegating execution to Block.
+
+        Returns an actual RAGModule instance (isinstance(result,
+        RAGModule) is True) wrapping a Block internally. input_node/
+        output_node are required exactly as Block requires them -- no
+        entry/exit-node inference, no re-validation of Block's own
+        construction-time checks. Not promised to work on an arbitrary
+        RAGModule subclass in this version -- see ADR-021 Q3.
+        """
+        # Deferred import: block.py imports Module from this module at
+        # module scope, so a top-level import here would be circular.
+        # Mirrors Module.snapshot()'s existing lazy-import pattern.
+        from ragtorch.core.block import Block
+
+        block = Block(graph, input_node=input_node, output_node=output_node)
+        return _GraphBackedRAGModule(block)
+
+
+class _GraphBackedRAGModule(RAGModule):
+    """Private adapter: a RAGModule that delegates forward() to a
+    Block. Not part of the public API -- construct via
+    RAGModule.from_graph(), never directly.
+    """
+
+    def __init__(self, block: Block) -> None:
+        super().__init__()
+        self._block = block  # single registration via __setattr__ -- see ADR-021 Q6
+
+    def forward(self, input: Any, *, context: ExecutionContext | None = None) -> Any:
+        return self._block(input, context=context)
