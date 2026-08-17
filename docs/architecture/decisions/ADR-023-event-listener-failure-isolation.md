@@ -404,6 +404,28 @@ New, named by this ADR's own adversarial review (20C):
   does not become forgotten the way EVT-FAIL-001 might have without
   ADR-022's own Deferred Risks section.
 
+  **Status update (Step 22, 22A-22J):** re-audited via 15 concrete
+  cases (R1-R15: nested-different-event delivery, nested-failure
+  isolation, cross-object nesting, self-unsubscribe-then-nest,
+  recursion through real `Module.__call__` execution, and more — see
+  `evaluation/step22-evaluation.md`). Every case involving *legitimate*
+  nesting (a listener publishing a *different* event, with its own
+  terminating condition) already composes correctly with ADR-023's
+  existing isolate-and-continue semantics, with zero special-casing
+  required — confirmed empirically, not assumed. Only unconditional
+  recursive publication of the *same* event triggers `RecursionError`,
+  and this is confirmed **self-bounded and cheap**: ~499 levels of
+  legitimate nesting available before the limit (Python's default
+  1000-frame stack, ~2 frames consumed per `publish()` level), and an
+  accidental infinite-recursion bug terminates in under 1ms (200-sample
+  benchmark, `benchmarks/step22_event_reentrancy_audit.py`) — not a
+  meaningful denial-of-service vector. **Decision: Outcome A —
+  current behavior is correct and sufficient. No production code
+  change. No ADR-024.** `EVT-REENTRANT-001` remains formally Deferred
+  (re-confirmed, not resolved) — this status update documents *why*
+  it remains the right decision, not that the risk itself was
+  eliminated.
+
 ## Acceptance criteria
 
 - [ ] Contract (this ADR's Public contract section)
