@@ -1,14 +1,16 @@
 # Step 20 Evaluation — Event Listener Failure Isolation
 
-Date: 2026-08-17 (20A-20Q, local) — pending CI/merge
+Date: 2026-08-17 (20A-20Q, local) — closed 2026-08-17 (post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
 
-Local implementation, tests, benchmark, and evaluation are done.
-Remaining: push, PR, CI, merge, post-merge CI, documentation closure
-(A72), following the identical discipline Steps 18/19 established.
+PR #27 merged as `4c545a0`; post-merge CI on `main` confirmed 496/496
+on 3.10/3.11/3.12 (run
+[32053185219](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32053185219)).
+ADR-023 → Accepted; requirements matrix A72 added. See the Closure
+section at the end of this document for the full gate-by-gate record.
 
 ## Evidence vocabulary
 
@@ -265,8 +267,93 @@ line group, same underlying cause: an exception/type added to
 `__init__.py` without updating this parity test) rather than a
 separate, unrelated cleanup.
 
+## 20O — CI
+
+**PR CI**: run [32052984836](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32052984836),
+`test (3.10)`/`test (3.11)`/`test (3.12)` all `SUCCESS`, 496/496,
+lint/format clean, on head SHA `7943a08`.
+
+**Merge**: PR #27 merged via `gh pr merge 27 --merge` after confirming
+`MERGEABLE`/`mergeStateStatus: CLEAN` with all three checks green.
+Merge commit: **`4c545a06f19d3b83cd3305db78721623192630e9`**.
+
+**Post-merge CI**: run [32053185219](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32053185219),
+`push` trigger, `headSha` confirmed as `4c545a0` (the actual merge
+commit, verified via `gh run view --json headSha`, not assumed).
+`test (3.10)`/`test (3.11)`/`test (3.12)` all `success`, **496/496
+passed on every version**. 3.10 passing directly validates ADR-023's
+`ExceptionGroup`-avoidance decision.
+
+GitHub's API returned intermittent `503` errors during both PR
+creation and merge — handled via the established background
+retry/backoff pattern (`until ... ; do sleep 15; done`), not by
+fabricating success; each operation confirmed via `gh pr view`/`gh pr
+merge` output before proceeding.
+
+## 20P — Documentation closure
+
+`ADR-023`'s Status moved to Accepted, citing the post-merge evidence
+above. Requirements matrix: added **A72**, following the A68-A71
+"new row cross-references and fulfills an old gap" convention
+(EVT-FAIL-001, recorded in ADR-022, not a numbered A-row directly, but
+a real, named gap this row closes).
+
 ## Closure
 
-Pending: 20L (post-merge CI verification, not yet run), 20M
-(documentation — ADR-023 → Accepted, requirements matrix A72),
-following the identical sequence Steps 18/19 established.
+### Merge
+
+PR #27 (`feat/step20-event-listener-failure-isolation` → `main`)
+merged as `4c545a0`. Post-merge CI confirmed on the actual merged SHA
+(run `32053185219`, 496/496, 3.10/3.11/3.12).
+
+### Final diff/scope review
+
+```
+git show 4c545a0 --stat (merge commit diff, confirmed against plan):
+ src/ragtorch/__init__.py                              | +1
+ src/ragtorch/core/__init__.py                         | +2
+ src/ragtorch/core/errors.py                           | +32 (approx)
+ src/ragtorch/core/events.py                           | +30 (approx)
+ tests/integration/test_execution_scoped_events.py     | +82 (approx)
+ tests/unit/core/test_events.py                        | +230 (approx)
+ tests/unit/test_public_api.py                         | +2
+ benchmarks/step20_listener_failure_isolation.py       | new
+ docs/architecture/decisions/ADR-023-...md              | new
+ evaluation/step20-evaluation.md                        | new
+```
+
+`module.py`, `context.py`, `sequential.py`, `block.py`, `engine.py` —
+all confirmed unmodified across the entire step. No accidental
+changes, no generated artifacts, no debug code, no skipped tests, no
+weakened assertions — every file individually traceable to a specific
+gate in this ledger.
+
+### Closure gate
+
+```
+□ Contract              PASS — 20E, CI-proven (32053185219)
+□ Implementation        PASS — 20F, CI-proven
+□ Unit tests             PASS — 496 total, CI-proven
+□ Integration tests      PASS — 4 new tests, CI-proven
+□ Failure tests          PASS — 12 parametrized FAIL-ISO-* tests, CI-proven
+□ Adversarial review      PASS — 20C, including 2 post-implementation
+                                  corrections (RecursionError double-fix,
+                                  Module.__call__ wrapping claim corrected
+                                  twice before verification)
+□ Benchmark               PASS — 20J, local by design (matches majority precedent)
+□ Evaluation               PASS — this document
+□ CI configured             PASS — .github/workflows/ci.yml (unmodified, already sufficient)
+□ CI executed (PR)          PASS — run 32052984836
+□ CI executed (post-merge)  PASS — run 32053185219
+□ Documentation               PASS — ADR-023 Accepted, A72 added
+□ Compatibility                 PASS — 20K, breaking change explicitly named
+□ Security                        PASS — 20L
+□ Dependencies                      PASS — 20M, zero manifest changes
+□ Diff review                        PASS — final diff/scope review above
+□ ADR decision                        PASS — ADR-023, Accepted
+□ No accidental changes                PASS
+
+ALL PASS → COMPLETE
+```
+
+**Step 20 status: COMPLETE.**

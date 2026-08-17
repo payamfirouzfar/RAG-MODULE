@@ -2,7 +2,21 @@
 
 ## Status
 
-Proposed
+Accepted
+
+Accepted after real GitHub Actions post-merge CI confirmed on the
+actual merged `main` SHA — not from PR CI or local checks alone, per
+this project's standing rule that "PR green is not proof." Evidence
+trail:
+
+- PR #27 (20A-20N: audit, adversarial review, ADR, contract,
+  implementation, unit/integration tests, benchmark, evaluation,
+  compatibility/security/dependency review): merged `4c545a0`,
+  post-merge CI run
+  [32053185219](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32053185219),
+  496/496 on 3.10/3.11/3.12, lint clean, on commit `4c545a0`. 3.10
+  passing directly confirms the `ExceptionGroup` avoidance decision
+  (Decision, "Why not `ExceptionGroup`?") was correct.
 
 ## Context
 
