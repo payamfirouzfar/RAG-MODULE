@@ -16,11 +16,15 @@ rag_fakes.py.
 
 from __future__ import annotations
 
-from tests.discovery.rag_fakes import (
+import ragtorch
+from ragtorch import Module, Sequential
+
+from .rag_fakes import (
     Chunk,
     CountingEmbedder,
     Document,
     EchoGenerator,
+    Embedding,
     FailingEmbedder,
     FailingGenerator,
     HashingEmbedder,
@@ -32,9 +36,6 @@ from tests.discovery.rag_fakes import (
     WordCountGenerator,
     run_pipeline,
 )
-
-import ragtorch
-from ragtorch import Module, Sequential
 
 DOCS = [
     Document(id="doc-a", text="RAG retrieves relevant external knowledge before generation."),
@@ -126,8 +127,6 @@ def test_a_query_and_corpus_embedded_with_different_embedders_cannot_be_mixed() 
     unavoidable coupling between an embedder and whatever store/query
     later reads its output. The store surfaces it as ValueError rather
     than silently producing garbage results."""
-    from tests.discovery.rag_fakes import Embedding
-
     store = InMemoryVectorStore()
     chunk = Chunk(id="c1", document_id="doc-a", text="test text")
     embedding_16d = Embedding(
@@ -227,8 +226,6 @@ def test_duplicate_chunk_ids_across_documents_do_not_silently_collide() -> None:
     chunk_1 = Chunk(id="doc-a::0", document_id="doc-a", text=colliding_doc.text)
     chunk_2 = Chunk(id="doc-a::0", document_id="doc-a", text=colliding_doc_v2.text)
 
-    from tests.discovery.rag_fakes import Embedding
-
     emb1 = Embedding(chunk_id=chunk_1.id, vector=HashingEmbedder()([chunk_1.text])[0])
     emb2 = Embedding(chunk_id=chunk_2.id, vector=HashingEmbedder()([chunk_2.text])[0])
     store.add([emb1], [chunk_1])
@@ -322,8 +319,6 @@ def test_generation_result_preserves_source_chunk_ids_for_citation() -> None:
 def test_document_chunk_embedding_types_are_immutable() -> None:
     doc = Document(id="doc-a", text="text")
     chunk = Chunk(id="c1", document_id="doc-a", text="text")
-    from tests.discovery.rag_fakes import Embedding
-
     embedding = Embedding(chunk_id="c1", vector=(1.0, 2.0))
 
     for obj, field_name, value in (
@@ -406,8 +401,6 @@ def test_fake_rag_stages_compose_naturally_through_sequential() -> None:
     store = InMemoryVectorStore()
     embedder = HashingEmbedder()
     chunks = [Chunk(id=f"{d.id}::0", document_id=d.id, text=d.text) for d in DOCS]
-    from tests.discovery.rag_fakes import Embedding
-
     vectors = embedder([c.text for c in chunks])
     embeddings = [Embedding(chunk_id=c.id, vector=v) for c, v in zip(chunks, vectors, strict=True)]
     store.add(embeddings, chunks)
