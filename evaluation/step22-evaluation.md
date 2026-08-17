@@ -1,16 +1,24 @@
 # Step 22 Evaluation — Event Reentrancy Audit (`EVT-REENTRANT-001`)
 
-Date: 2026-08-17 (22A-22L, local) — pending CI/merge
+Date: 2026-08-17 (22A-22L, local) — closed 2026-08-17 (post-merge CI confirmed)
 
 ## Status
 
-**Overall status: IN PROGRESS.**
+**Overall status: COMPLETE.**
 
 This step's central result is **Outcome A**: current behavior is
-correct and sufficient. No ADR-024, no production code change. The
-deliverable is a 15-case (R1-R15) empirical audit, deterministic
-characterization tests, a benchmark, and precise documentation.
-Remaining: push, PR, CI, merge, post-merge CI, final closure.
+correct and sufficient. No ADR-024, no production code change. PR #29
+merged as `7136959`; post-merge CI on `main` confirmed 522/522 on
+3.10/3.11/3.12 (run
+[32061828395](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32061828395)).
+Requirements matrix A74 added. **Precise conclusion, not to be
+paraphrased as "reentrancy is fully supported":** the library provides
+no reentrancy abstraction and makes no depth guarantee; deterministic
+testing found every legitimate (terminating, different-event) nesting
+pattern already works correctly, and the one failure mode
+(unconditional same-event recursion) is a clean, self-bounded, cheap
+`RecursionError`. See the Closure section at the end of this document
+for the full gate-by-gate record.
 
 ## Evidence vocabulary
 
@@ -279,11 +287,90 @@ unmodified. This is the expected, correct footprint for a genuine
 Outcome-A step: evidence, characterization tests, and documentation,
 zero production code.
 
+## CI
+
+**PR CI**: run [32061654803](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32061654803),
+`test (3.10)`/`test (3.11)`/`test (3.12)` all `success`, 522/522, on
+head SHA `bc21db6`. Passed on the first attempt — no CI-caught defect
+this time (unlike Step 21).
+
 ## Closure
 
-Pending: push, PR, CI (3.10/3.11/3.12), merge, post-merge CI
-verification, final closure record. Since no new capability was
-fulfilled (the existing `EVT-REENTRANT-001` deferred-risk record was
-updated with new evidence, not resolved), whether a requirements-matrix
-row is warranted will be decided during closure, following the same
-"do not invent an A-number prematurely" discipline Step 21 applied.
+### Merge
+
+PR #29 (`feat/step22-event-reentrancy-audit` → `main`) merged via
+`gh pr merge 29 --merge` after confirming `MERGEABLE`/`mergeStateStatus: CLEAN`
+on head SHA `bc21db6` with all three checks green. Merge commit
+verified directly (not trusted from PR metadata alone):
+**`71369594377fbf420e8c30be305666b94cd564d5`**.
+
+### Post-merge CI
+
+Run [32061828395](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32061828395),
+`push` trigger, `headSha` confirmed as `7136959` (the actual merge
+commit, via `gh run view --json headSha`). Per-job conclusions
+individually verified: `test (3.10)`/`test (3.11)`/`test (3.12)` all
+`success`, **522/522 passed on every version**.
+
+### Documentation closure
+
+Added **A74** to the requirements matrix, following the A68-A73
+convention, with wording that explicitly distinguishes "audited and
+found already-correct" from "reentrancy is fully supported" — matching
+the precision A73 established for the analogous concurrency finding.
+ADR-023's `EVT-REENTRANT-001` entry (updated earlier in this branch)
+remains the authoritative home for the detailed findings; A74
+cross-references it rather than duplicating the full analysis.
+
+### Final diff/scope review
+
+```
+git diff main...feat/step22-event-reentrancy-audit --stat (pre-merge):
+ benchmarks/step22_event_reentrancy_audit.py           |  99 +++++++
+ docs/.../ADR-023-event-listener-failure-isolation.md  |  20 +-
+ evaluation/step22-evaluation.md                       | 282 ++++++++++++++
+ tests/unit/core/test_events.py                        | 264 +++++++++++++
+```
+
+`events.py`, `errors.py`, `module.py` — confirmed zero changes via
+`git diff main...feat/step22-event-reentrancy-audit -- src/` returning
+empty output. Genuine Outcome-A footprint: evidence, characterization
+tests, and documentation, zero production code.
+
+### Closure gate
+
+```
+□ Repository audit          PASS — 22A, structural findings verified against source
+□ Problem definition          PASS — 22B, 15 cases (R1-R15) each empirically reproduced
+□ Concurrency/reentrancy distinction  PASS — 22C, explicitly demonstrated, not asserted
+□ ADR-023 compatibility audit           PASS — 22D, all 6 guarantees re-verified
+□ Empirical reproduction                  PASS — 22E, deterministic, no time.sleep
+□ Adversarial review                        PASS — 22F, 5 policies x 15 criteria
+□ Future-change review                        PASS — 22G, no speculative abstraction added
+□ Benchmark                                     PASS — 22H, three-tier, no threshold
+□ Security review                                 PASS — 22I, self-bounded/cheap confirmed
+□ Decision                                          PASS — 22J, Outcome A, reasoned
+□ Unit tests                                          PASS — 16 new tests, CI-proven
+□ Integration tests                                     PASS — R14/R15 through real Module.__call__
+□ CI executed (PR)                                        PASS — run 32061654803
+□ CI executed (post-merge)                                  PASS — run 32061828395
+□ Documentation                                               PASS — ADR-023 updated, A74 added
+□ Compatibility                                                 PASS — zero API/behavior change
+□ Dependencies                                                    PASS — zero manifest changes
+□ Diff review                                                       PASS — final diff/scope review above
+□ No accidental changes                                               PASS
+
+ALL PASS → COMPLETE
+```
+
+**Step 22 status: COMPLETE.**
+
+**Precise conclusion, exactly as required, not paraphrased:** *The
+library provides no reentrancy abstraction and makes no depth
+guarantee; deterministic testing found every legitimate (terminating,
+different-event) nesting pattern already works correctly, and the one
+failure mode (unconditional same-event recursion) is a clean,
+self-bounded, cheap `RecursionError`, not a hang or resource leak.*
+`EVT-REENTRANT-001` remains open and Deferred — re-confirmed, not
+resolved. `EVT-RACE-001` (Step 21) remains separately tracked and
+unaffected by this step.
