@@ -30,13 +30,36 @@ vendor/model/storage-independence rules that will govern them.
 See [docs/architecture/decisions/ADR-001-core-module-abstraction.md](docs/architecture/decisions/ADR-001-core-module-abstraction.md)
 for the reasoning behind the core `Module` contract.
 
-## Install (development)
+## Install
+
+`ragtorch` is **not yet published to PyPI**. `pip install ragtorch` is
+not available -- do not run it, it will either fail or install an
+unrelated package of the same name. The only supported installation
+path today is from a local source checkout.
+
+### Development install
 
 ```bash
 python -m venv .venv
 .venv/Scripts/activate   # Windows
 pip install -e ".[dev]"
 ```
+
+This installs `ragtorch` in editable mode plus development tooling
+(`pytest`, `ruff`, `mypy`, `build`).
+
+### Building and installing a real wheel locally
+
+To build and install the actual distributable artifact (e.g. to test
+it the way a real consumer would, outside the source checkout):
+
+```bash
+python -m build --wheel
+pip install dist/ragtorch-*.whl
+```
+
+The wheel has zero runtime dependencies and is provider-independent --
+no LLM, embedding, vector-store, or network dependency is pulled in.
 
 ## Quick example
 

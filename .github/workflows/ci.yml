@@ -64,3 +64,91 @@ jobs:
 
       - name: Build package
         run: pip install build && python -m build
+
+  packaging:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build + test tooling only (no editable install)
+        run: pip install build pytest "tomli>=2.0; python_version < '3.11'"
+
+      - name: Build wheel and sdist
+        run: python -m build --outdir dist .
+
+      - name: Inspect built artifacts
+        run: |
+          ls -la dist/
+          python -m zipfile -l dist/*.whl
+          python -c "
+          import glob, zipfile
+          wheel = glob.glob('dist/*.whl')[0]
+          with zipfile.ZipFile(wheel) as z:
+              names = z.namelist()
+          assert not any(n.startswith('tests/') for n in names), 'wheel must not contain tests'
+          assert not any('.claude' in n for n in names), 'wheel must not contain local dev tooling'
+          assert not any('__pycache__' in n for n in names), 'wheel must not contain bytecode caches'
+          print(f'wheel contains {len(names)} entries, all checks passed')
+          "
+
+      - name: Clean-install the built wheel into a fresh environment
+        run: |
+          python -m venv /tmp/clean-install-env
+          /tmp/clean-install-env/bin/python -m pip install --quiet dist/*.whl
+
+      - name: Import ragtorch from the clean install (not the source checkout)
+        run: |
+          cd /tmp
+          /tmp/clean-install-env/bin/python -c "
+          import ragtorch
+          print('version:', ragtorch.__version__)
+          assert 'site-packages' in ragtorch.__file__
+          "
+
+      - name: Import documented public API from the clean install
+        run: |
+          cd /tmp
+          /tmp/clean-install-env/bin/python -c "
+          import ragtorch
+          names = sorted(ragtorch.__all__)
+          names.remove('__version__')
+          exec('from ragtorch import ' + ', '.join(names))
+          print(len(names), 'public exports imported successfully')
+          "
+
+      - name: Consumer smoke test against the clean install
+        run: |
+          cd /tmp
+          /tmp/clean-install-env/bin/python -c "
+          from ragtorch import Module, Sequential
+
+          class UpperCase(Module):
+              def forward(self, input):
+                  return input.upper()
+
+          class Reverse(Module):
+              def forward(self, input):
+                  return input[::-1]
+
+          pipeline = Sequential(UpperCase(), Reverse())
+          result = pipeline('hello')
+          assert result == 'OLLEH', result
+          print('consumer smoke test passed')
+          "
+
+      - name: Run the full packaging test suite (builds/installs its own artifacts)
+        run: pytest -q -m packaging tests/packaging/
+
+      - name: Upload built distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragtorch-dist-py${{ matrix.python-version }}
+          path: dist/
