@@ -46,6 +46,37 @@ def _forward_accepts_context(cls: type[Module]) -> bool:
     return accepts
 
 
+def _would_create_cycle(parent: Module, child: Module) -> bool:
+    """Would registering ``child`` under ``parent`` create a cycle.
+
+    True if ``parent`` already appears in ``child``'s descendant graph
+    (including ``child`` itself) -- i.e. registering this edge would make
+    ``parent`` reachable from itself. Iterative, identity-based (``id()``,
+    not ``==``) traversal with an explicit visited set: the invariant this
+    function protects is "the module hierarchy has no cycles," so the
+    detector itself must not depend on recursion depth tracking a
+    hierarchy that, without this check, could be unbounded.
+    """
+    target_id = id(parent)
+    stack = [child]
+    visited: set[int] = set()
+
+    while stack:
+        current = stack.pop()
+        current_id = id(current)
+
+        if current_id == target_id:
+            return True
+
+        if current_id in visited:
+            continue
+
+        visited.add(current_id)
+        stack.extend(current.children())
+
+    return False
+
+
 class Module:
     """Base class for every component in ragtorch.
 
@@ -95,6 +126,12 @@ class Module:
                 f"with the name '{name}' already exists.\n\n"
                 f"Existing module:\n    {type(existing).__name__}\n\n"
                 f"Attempted module:\n    {type(module).__name__}"
+            )
+        if existing is None and _would_create_cycle(self, module):
+            raise RegistryError(
+                f"Cannot register '{name}': {type(module).__name__} already "
+                f"contains {type(self).__name__} as a descendant, so this "
+                f"registration would create a cycle in the module hierarchy."
             )
         self._modules[name] = module
 
