@@ -7,13 +7,13 @@ name = "ragtorch"
 version = "0.4.0"
 description = "A modular framework kernel for building RAG systems."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "ragtorch contributors" }]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -27,17 +27,34 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.6",
     "mypy>=1.10",
+    "build>=1.2",
 ]
 
 [project.urls]
-Homepage = "https://github.com/ragtorch/ragtorch"
+Homepage = "https://github.com/payamfirouzfar/RAG-MODULE"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ragtorch"]
 
+[tool.hatch.build.targets.sdist]
+# Explicit allowlist (defense in depth, on top of .gitignore): only
+# what a source distribution actually needs to build/verify the
+# package, never local development tooling directories.
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/pyproject.toml",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m \"not packaging\""
+markers = [
+    "packaging: builds a wheel/sdist and installs it into a fresh venv; slow, excluded by default, run explicitly with -m packaging",
+]
 
 [tool.ruff]
 line-length = 100
