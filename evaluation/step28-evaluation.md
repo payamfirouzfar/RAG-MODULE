@@ -2,10 +2,10 @@
 
 ## Status
 
-**Step 28: local implementation, testing, and release-pipeline preparation
-COMPLETE. Actual PyPI publication BLOCKED — explicitly not attempted, per
-the instruction's own stop condition ("release credentials are
-unavailable").**
+**Step 28: release-pipeline preparation COMPLETE and CI-verified
+(PR #35, merge `dc6558a`, post-merge CI green on all 6 jobs). Actual PyPI
+publication BLOCKED — explicitly not attempted, per the instruction's
+own stop condition ("release credentials are unavailable").**
 
 This step builds and CI-verifies a complete, correct release pipeline
 capable of publishing `ragtorch` to PyPI the moment PyPI Trusted
@@ -476,8 +476,37 @@ remains untracked and is not part of this diff.
 
 ## 28Q — CI
 
-(Filled in after PR is opened — see below; this section records
-real GitHub Actions evidence once available.)
+- Branch: `feat/step28-pypi-package-release`
+- PR: [#35](https://github.com/payamfirouzfar/RAG-MODULE/pull/35)
+- PR CI run [32082494612](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32082494612)
+  at commit `5692010` (PR head) — **all 6 jobs succeeded on the first
+  attempt**: `test` × {3.10, 3.11, 3.12} — **549 passed, 13 deselected**
+  each; `packaging` × {3.10, 3.11, 3.12} — **13 passed** each. This is
+  the first real CI evidence that the `__version__` drift fix (28M item
+  1) works correctly in a genuinely fresh environment, not merely
+  locally — `test_installed_version_matches_pyproject` is part of the
+  13-test packaging suite that passed on all three Python versions.
+- `release.yml` was **not triggered** by this PR (by design — it only
+  listens for `push: tags: v*` and `workflow_dispatch`) — its YAML
+  syntax was validated locally (`yaml.safe_load`) before commit, and its
+  `build-and-validate` job's logic was manually cross-checked against
+  the already-passing `packaging` job in `ci.yml`, which shares the same
+  build/inspect/clean-install/smoke-test pattern.
+- PR diff scope verified via `gh pr view --json files` immediately
+  before merge: exactly the eleven files listed in 28P, no unrelated
+  `src/ragtorch/**` changes beyond the single justified `__version__`
+  fix.
+- Merged via `gh pr merge 35 --merge`. Merge SHA verified directly via
+  `gh pr view --json mergeCommit`: **`dc6558a1e6952059d956154939b127d18558b58b`**.
+- Post-merge CI run [32082622430](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32082622430)
+  on `main`, head SHA confirmed as the exact merge commit `dc6558a` —
+  **all 6 jobs succeeded**:
+  - `test (3.10)`, `test (3.11)`, `test (3.12)`: **549 passed, 13
+    deselected** each.
+  - `packaging (3.10)`, `packaging (3.11)`, `packaging (3.12)`: **13
+    passed** each.
+- Local branch fast-forwarded to `dc6558a` (`git checkout main && git
+  pull`), confirmed via `git log --oneline -3`.
 
 ## 28-STOP — Publication blocked (explicit stop condition)
 
