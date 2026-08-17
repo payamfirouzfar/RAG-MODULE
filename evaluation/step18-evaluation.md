@@ -1,6 +1,6 @@
 # Step 18 Evaluation — Execution-Scoped Event Delivery
 
-Date: 2026-08-17 (18A) — updated through 18G
+Date: 2026-08-17 (18A) — updated through 18H + real CI evidence (PR #25)
 
 ## Status
 
@@ -17,6 +17,18 @@ decided. ADR-022 remains authoritative for architectural reasoning
 (decision, alternatives, non-goals, deferred risks); this document
 mirrors that ADR's status against actual test/benchmark/CI evidence and
 tracks it per-gate rather than as one aggregate claim.
+
+**18A–18H are now CI-proven, not merely locally verified.** PR #25
+(`feat/step18-event-scoped-delivery-audit` → `main`) triggered a real
+`pull_request`-scoped run of `.github/workflows/ci.yml`
+(run `32035631246`): `test (3.10)`, `test (3.11)`, `test (3.12)` all
+green, every configured step passed, including the newly-added Step 18
+benchmark step. This is genuine CI execution — a downloaded artifact
+from the actual run, not a re-typed local result. See the 18J row in
+the Evidence Matrix and the "18J (pulled forward)" subsection under
+18H for the full record. **18I (final synthesis), 18K (docs/
+compatibility/security/dependency), and 18L (release gate) remain
+open** — Step 18 as a whole is still IN PROGRESS.
 
 ## Evidence vocabulary
 
@@ -77,23 +89,23 @@ not renamed here either.
 | 18C | Architecture/ADR | Event delivery scoping mechanism explicitly decided | ADR-022 | ADR-022 Decision, Alternatives considered | ✓ | N/A | Designed |
 | 18C | ADR | ADR-022 drafted, addressing all 12 decision-gate questions | ADR-022 | ADR-022 full document | ✓ | N/A | Designed (Status: Proposed, not yet Accepted) |
 | 18D | Contract | ADR-022 contract frozen into executable tests before implementation | ADR-022 | `tests/unit/core/test_events.py` (EVT-*), pre-implementation collection failure confirmed | ✓ | N/A | Contract-frozen |
-| 18E | Implementation | `EventScope`, `ExecutionContext.event_scope`, `child()` propagation, `Module.__call__` dual delivery | ADR-022 Decision | `events.py`, `context.py`, `module.py`, `__init__.py` exports | ✓ | pending | Implemented (local); CI pending |
-| 18E | Test | Focused EVT-* contract tests pass against implementation | ADR-022 | `test_events.py`, 22 passed | ✓ | pending | Test-proven (local) |
-| 18E | Test | Full suite regresses cleanly | — | 448 passed | ✓ | pending | Test-proven (local) |
-| 18E | Quality | Lint/format clean | — | `ruff check`/`ruff format --check` | ✓ | pending | Locally verified |
-| 18E | Quality | `mypy`, scoped exactly as CI runs it (`files = ["src/ragtorch"]`) | `pyproject.toml` `[tool.mypy]` | `mypy` bare invocation, 0 errors | ✓ | pending | Locally verified (matches CI scope) |
-| 18F | Integration | Real composition paths (`Sequential`, nested `Sequential`, `Block`, `RAGModule`, `ExecutionEngine`) propagate `event_scope` | ADR-022 | `test_execution_scoped_events.py`, 9 tests (18F) | ✓ | pending | Test-proven (local) |
+| 18E | Implementation | `EventScope`, `ExecutionContext.event_scope`, `child()` propagation, `Module.__call__` dual delivery | ADR-022 Decision | `events.py`, `context.py`, `module.py`, `__init__.py` exports | ✓ | ✓ (PR #25, run 32035631246) | **Implemented, CI-proven** |
+| 18E | Test | Focused EVT-* contract tests pass against implementation | ADR-022 | `test_events.py`, 22 passed | ✓ | ✓ (part of "Unit and integration tests" step, all 3 Python versions) | **Test-proven, CI-proven** |
+| 18E | Test | Full suite regresses cleanly | — | 461 passed (final count including 18F/18G/18H additions) | ✓ | ✓ (all 3 Python versions) | **Test-proven, CI-proven** |
+| 18E | Quality | Lint/format clean | — | `ruff check`/`ruff format --check` | ✓ | ✓ ("Check formatting"/"Lint" steps, all 3 Python versions) | **CI-proven** |
+| 18E | Quality | `mypy`, scoped exactly as CI runs it (`files = ["src/ragtorch"]`) | `pyproject.toml` `[tool.mypy]` | `mypy` bare invocation, 0 errors | ✓ | ✓ ("Type check" step, all 3 Python versions) | **CI-proven** |
+| 18F | Integration | Real composition paths (`Sequential`, nested `Sequential`, `Block`, `RAGModule`, `ExecutionEngine`) propagate `event_scope` | ADR-022 | `test_execution_scoped_events.py`, 9 tests (18F) | ✓ | ✓ (part of full suite CI run) | **Test-proven, CI-proven** |
 | 18F | Integration | No production architecture change required to satisfy the contract | — | `git diff --stat` shows zero changes to `sequential.py`/`block.py`/`engine.py` | ✓ | N/A | Verified |
-| 18F | Compatibility | Global bus remains independent of scoping | ADR-022 Q2 | `test_global_bus_remains_independent_of_execution_scope` | ✓ | pending | Test-proven (local) |
-| 18G | Concurrency | `EVT-ISOLATION-001` — Claim A: `EventScope` cross-execution isolation | ADR-022 Concurrency §, Claim A | `test_concurrent_executions_do_not_cross_event_scopes`, `test_concurrent_executions_stay_isolated_across_repeated_runs` (20 iterations) | ✓ | pending | **Test-proven** (structural + empirical) |
-| 18G | Concurrency | Claim B — `EventBus` thread safety | ADR-022 Concurrency §, Claim B | `test_global_bus_current_concurrent_delivery_behavior_on_cpython` — deliberately NOT framed as proof | — | — | **Not guaranteed** (see Deferred Risks, `EVT-RACE-001`) |
-| 18G | Failure | `EVT-FAILURE-001` — failure reaches owning execution scope | ADR-022 | `test_failure_events_reach_execution_scope` (18F) | ✓ | pending | Test-proven (local) |
-| 18G | Failure | `EVT-FAILURE-002` — failure in one execution does not affect a sibling execution | ADR-022 | `test_failure_in_one_execution_does_not_affect_a_sibling_execution` | ✓ | pending | Test-proven (local) |
-| 18G | Quality | Full suite / lint / format / diff-check after 18G additions | — | 461 passed, clean lint/format, clean diff-check | ✓ | pending | Locally verified |
+| 18F | Compatibility | Global bus remains independent of scoping | ADR-022 Q2 | `test_global_bus_remains_independent_of_execution_scope` | ✓ | ✓ (part of full suite CI run) | **Test-proven, CI-proven** |
+| 18G | Concurrency | `EVT-ISOLATION-001` — Claim A: `EventScope` cross-execution isolation | ADR-022 Concurrency §, Claim A | `test_concurrent_executions_do_not_cross_event_scopes`, `test_concurrent_executions_stay_isolated_across_repeated_runs` (20 iterations) | ✓ | ✓ (ran on GitHub-hosted Ubuntu runners, all 3 Python versions, not just local Windows) | **Test-proven, CI-proven** (structural + empirical) |
+| 18G | Concurrency | Claim B — `EventBus` thread safety | ADR-022 Concurrency §, Claim B | `test_global_bus_current_concurrent_delivery_behavior_on_cpython` — deliberately NOT framed as proof | — | — | **Not guaranteed** (see Deferred Risks, `EVT-RACE-001`) — CI running this test does not change this claim; the test itself asserts no guarantee |
+| 18G | Failure | `EVT-FAILURE-001` — failure reaches owning execution scope | ADR-022 | `test_failure_events_reach_execution_scope` (18F) | ✓ | ✓ (part of full suite CI run) | **Test-proven, CI-proven** |
+| 18G | Failure | `EVT-FAILURE-002` — failure in one execution does not affect a sibling execution | ADR-022 | `test_failure_in_one_execution_does_not_affect_a_sibling_execution` | ✓ | ✓ (part of full suite CI run) | **Test-proven, CI-proven** |
+| 18G | Quality | Full suite / lint / format / diff-check after 18G additions | — | 461 passed, clean lint/format, clean diff-check | ✓ | ✓ (all 3 Python versions) | **CI-proven** |
 | 18G | Quality | B023 late-binding closure defects caught and fixed in test code itself | — | lint output diffed before/after fix | ✓ | N/A | Test-proven (defect in test authoring, not production code) |
-| 18H | Benchmark | Event delivery overhead measured (no scope / empty scope / active scope), corrected baseline (`context=None`, not `ExecutionContext()`) | ADR-022 Benchmark strategy | `benchmarks/step18_execution_scoped_events.py`, 3 corrected runs at 50,000 samples/tier (18H-C1) | ✓ | pending (now wired into CI as of 18H-C3, real run pending) | Benchmark-proven (local); CI pending |
+| 18H | Benchmark | Event delivery overhead measured (no scope / empty scope / active scope), corrected baseline (`context=None`, not `ExecutionContext()`) | ADR-022 Benchmark strategy | `benchmarks/step18_execution_scoped_events.py`; 3 local corrected runs (18H-C1) + real CI artifact from PR #25 run 32035631246 (Python 3.12.13: no_scope p50 4.318µs, empty/active ~5.0µs, +16% scope-check delta) | ✓ | ✓ (benchmark executed successfully and artifact uploaded on all 3 Python versions) | **Benchmark-proven, CI-proven** |
 | 18I | Evaluation | Step 18 behavior evaluated against the frozen ADR-022 contract as a whole | this document | this document (final pass) | pending | pending | Planned |
-| 18J | CI | Required CI gates pass on the repository's actual CI workflow, not a local approximation | `.github/workflows/ci.yml` | pending real CI run | — | pending | Planned |
+| 18J | CI | Required CI gates pass on the repository's actual CI workflow, not a local approximation | `.github/workflows/ci.yml` | PR #25, run 32035631246 — `test (3.10)`, `test (3.11)`, `test (3.12)` all green, every configured step passed | ✓ | ✓ | **CI-proven** |
 | 18K | Docs | ADR-022 status moved to Accepted; requirements matrix A5/A10 evidence columns updated | requirements-matrix-v0.1.md | pending | pending | pending | Planned |
 | 18K | Compatibility | Full compatibility review recorded (API/behavioral/serialization/runtime) | — | pending | pending | pending | Planned |
 | 18K | Security | Full security review recorded (event payload exposure, cross-execution observability) | ADR-022 Security § (preliminary) | pending expanded review | pending | pending | Planned |
@@ -578,8 +590,8 @@ successfully** on every supported Python version — it is explicitly
 not converted into a performance gate: no threshold assertion exists
 anywhere in the script, and CI failure here means only "the benchmark
 script itself failed to run," never "a performance number was too
-high." Local YAML syntax validated (`yaml.safe_load`); real CI
-execution is pending an actual push/PR run (18J).
+high." Local YAML syntax validated (`yaml.safe_load`) prior to the
+real run below.
 
 ### 18H-14/18H-15: evaluation and diff review
 
@@ -592,29 +604,90 @@ by 18H. Full local gate re-run after all 18H changes: `ruff format
 (unchanged — the benchmark and CI workflow are outside the test
 suite's scope by design).
 
-## Step 18 completion state (updated through 18H)
+### 18J (pulled forward): actual CI execution evidence
 
-**Step 18 is NOT complete.** 18A through 18H have reached the
-statuses recorded in the Evidence Matrix above — predominantly
-*Test-proven (local)*, *Locally verified*, and now *Benchmark-proven
-(local)* for 18H, with **zero CI-proven items** to date, since no
-push/PR has yet triggered `.github/workflows/ci.yml` against this
-branch's Step 18 changes. 18H's benchmark is now wired into that
-workflow (18H-C3, reversing the original file-only decision per this
-project's stronger CI-evidence rule) — it will produce CI evidence on
-the next real CI run, not before.
+Branch `feat/step18-event-scoped-delivery-audit` committed
+(`6556541`), pushed to `origin`, and opened as PR #25 against `main`
+(`https://github.com/payamfirouzfar/RAG-MODULE/pull/25`), which
+triggered a real `pull_request`-scoped run of
+`.github/workflows/ci.yml` — run ID `32035631246`. This is genuine CI
+execution, not a local approximation and not merely YAML-syntax
+validation:
+
+```
+✓ test (3.10)  — 26s — every step green, including "Step 18 performance
+                       benchmark" and "Upload Step 18 benchmark artifact"
+✓ test (3.11)  — 20s — same
+✓ test (3.12)  — 24s — same
+```
+
+Every configured step passed on all three matrix Python versions:
+formatting, lint, `mypy`, unit+integration tests, evaluation smoke
+test, Step 5 benchmark, **Step 18 benchmark (new)**, package build.
+Only non-substantive annotations (GitHub Actions' own Node.js 20
+deprecation notice on `actions/checkout@v4` etc., unrelated to this
+repository's code) appear in the run's warnings.
+
+**Real CI benchmark artifact** (`step18-execution-scoped-events-benchmark-py3.12`,
+downloaded via `gh run download`, not re-run locally and re-typed):
+
+```
+python=3.12.13
+samples=50000
+
+          tier    p50 (us)    p95 (us)
+      no_scope       4.318       4.408
+   empty_scope       5.019       5.110
+  active_scope       5.009       5.099
+
+scope_check_overhead_p50_pct=16.23%   (tier 2 vs. tier 1)
+listener_delivery_overhead_p50_pct=-0.20%   (tier 3 vs. tier 2)
+total_scoped_overhead_p50_pct=16.00%   (tier 3 vs. tier 1)
+```
+
+**This corroborates, and sharpens, the local 18H-C1 finding.** On the
+CI runner (Ubuntu, GitHub-hosted), p50/p95 are nearly identical within
+each tier — a far tighter measurement than any local Windows run
+produced — and `no_scope` (4.318 µs) sits clearly and consistently
+below both scoped tiers (~5.0 µs), with a stable +16% scope-check
+delta. The listener-delivery delta (tier 3 vs. tier 2) is effectively
+zero (−0.20%), consistent with the local finding that this benchmark's
+resolution cannot separate listener-invocation cost from the cost of
+merely carrying a non-`None` event_scope. **No new claim is made
+beyond what CI evidence supports**: scope-carrying has a real, small,
+consistently-measurable cost on this CI environment; listener delivery
+itself remains unresolved from tier 2.
+
+**Status upgrade, evidence-based**: 18H's benchmark row moves from
+*Benchmark-proven (local); CI pending* to **Benchmark-proven,
+CI-proven** — the actual GitHub Actions run, not a local approximation,
+is now the evidence of record for "the benchmark executes successfully
+on every supported Python version."
+
+## Step 18 completion state (updated through 18H + real CI evidence)
+
+**Step 18 is NOT complete**, but its evidence base is now
+substantially stronger. 18A through 18H, plus the core of 18J, have
+reached **CI-proven** status via PR #25's real GitHub Actions run
+(`32035631246`) — not local approximation, not YAML-syntax validation
+only. `test (3.10)`/`test (3.11)`/`test (3.12)` all passed with every
+configured step green, including the newly-added Step 18 benchmark
+step and its artifact upload.
 
 Remaining before Step 18 can be marked Complete:
 
-- **18I** — this document's final evaluation pass, synthesizing 18A-18H
-  against the frozen ADR-022 contract as a whole.
-- **18J** — actual CI evidence (not a local approximation) for every
-  row currently marked "pending" in the CI column above, including
-  18H's newly-added benchmark CI step.
+- **18I** — this document's final evaluation pass, synthesizing
+  18A-18H (now including real CI evidence) against the frozen ADR-022
+  contract as a whole.
 - **18K** — documentation (ADR-022 → Accepted, requirements matrix
   A5/A10 evidence columns), full compatibility/security/dependency
   review (expanding past the preliminary ADR-022 sections).
-- **18L** — final diff/status/release gate.
+- **18L** — final diff/status/release gate, including the decision of
+  whether/when PR #25 merges to `main` and whether a post-merge CI run
+  (on `main` itself, not just the `pull_request` trigger) is also
+  required before final acceptance — consistent with this project's
+  established precedent of treating pre-merge and post-merge CI as
+  distinct evidence.
 
 ## Conclusion (18A)
 
