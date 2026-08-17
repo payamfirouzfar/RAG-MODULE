@@ -826,7 +826,8 @@ this ADR — recorded so "deferred" does not silently become "forgotten."
 
 ### EVT-RACE-001 — Global `EventBus` synchronization
 
-**Status:** Deferred.
+**Status:** Deferred — re-audited in Step 21 (21A-21C), decision
+unchanged: no synchronization added.
 
 **Current behavior:** `EventBus` (the global, process-wide instance
 returned by `event_bus()`) uses a shared, mutable, unsynchronized
@@ -840,13 +841,41 @@ is unrelated to ADR-022's actual scope (execution-scoped *delivery*,
 not global-bus *safety* — see Problem/Q1), and fixing it here would
 violate this project's one-primitive-per-step discipline.
 
+**Step 21 audit findings (deterministic, `threading.Barrier`-synchronized
+reproductions, not `time.sleep`-based, not theoretical):** aggressive
+concurrent subscribe/unsubscribe/publish churn (up to 20,000
+iterations, up to 4-way concurrent publish) produced **zero
+memory-corruption or crash hazards** — CPython's GIL protects every
+individual `list` operation, and Step 20's `publish()`-time snapshot
+already isolates each call from concurrent mutation cleanly. The one
+real, deterministically-reproducible finding: **two threads
+concurrently calling `unsubscribe()` on the *same* listener can race,
+with the losing thread raising `ValueError`.** This is **not a new
+concurrency-specific defect** — confirmed empirically that
+`unsubscribe()` on an already-removed listener already raises
+`ValueError` with zero threads involved (i.e., `unsubscribe()` was
+never idempotent, single- or multi-threaded); concurrency only makes
+this pre-existing, already-true contract question reachable
+non-deterministically rather than introducing a new failure mode.
+Making `unsubscribe()` idempotent would be an unrelated API-contract
+decision this audit found no evidence to justify (no caller has ever
+needed it).
+
 **Current guarantee:** None. See the Concurrency section above for the
 full table. `EventScope` isolation is unaffected by this risk (Claim A
 holds independently of Claim B).
 
 **Evidence:** `test_global_bus_current_concurrent_delivery_behavior_on_cpython`
-(18G) pins one observed outcome on CPython; it is explicitly not framed
-as proof of a guarantee.
+(18G) pins one observed outcome on CPython. Step 21 adds five
+parametrized characterization tests (`EventBus`/`EventScope` both) in
+`tests/unit/core/test_events.py`:
+`test_concurrent_subscribe_does_not_corrupt_or_lose_registrations`,
+`test_concurrent_publish_delivers_every_event_no_loss_no_duplication`,
+`test_concurrent_subscribe_and_publish_does_not_crash`,
+`test_concurrent_unsubscribe_of_the_same_listener_can_race_to_valueerror`,
+`test_double_unsubscribe_already_raises_single_threaded`. None of
+these establish a thread-safety *guarantee* — they pin observed
+behavior on CPython, exactly like the 18G test before them.
 
 **Required before changing:** a concurrency ADR amendment (or new ADR)
 addressing ordering, reentrancy, exception isolation, and listener
@@ -854,9 +883,13 @@ lifecycle under synchronization; a benchmark showing the latency/
 contention cost of the chosen synchronization primitive; deterministic
 race tests (not schedule-dependent stress tests); a compatibility
 analysis against every existing `event_bus()` caller; CI evidence.
+Step 21's audit did not find evidence meeting this bar — see
+`evaluation/step21-evaluation.md`.
 
 **Owner:** Unassigned — revisit when a real requirement (not merely
-audit-discovered risk) demands `EventBus` concurrency guarantees.
+audit-discovered risk) demands `EventBus` concurrency guarantees. Two
+audits now (Step 18's original recording, Step 21's re-audit) have
+found no such requirement.
 
 **Revisit:** No committed milestone. Tracked here so it surfaces on the
 next audit that touches `events.py`.
