@@ -83,9 +83,9 @@ pip install ragmodel
 import ragtorch  # the import name stays ragtorch, even though the PyPI package is ragmodel
 ```
 
-Only use this once `ragmodel` has actually been published — check
-[CHANGELOG.md](CHANGELOG.md) or the PyPI project page for the current
-released version before relying on this command.
+`ragmodel` is published on PyPI: https://pypi.org/project/ragmodel/.
+Check [CHANGELOG.md](CHANGELOG.md) or the PyPI project page for the
+current released version.
 
 ### Development install
 

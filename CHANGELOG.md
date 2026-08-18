@@ -65,6 +65,30 @@ fixes only.
   evaluation behavior. This release is packaging/release-infrastructure
   only.
 
+### Published
+
+- **`ragmodel` 0.5.0 is published on PyPI**: https://pypi.org/project/ragmodel/.
+  Publication run: `release.yml` run
+  [32114922290](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32114922290)
+  (triggered by tag `v0.5.0`), `publish` job succeeded, gated behind the
+  `pypi` GitHub Environment's required-reviewer approval. Verified
+  independently by installing `ragmodel==0.5.0` from the real PyPI index
+  into a fresh, isolated virtual environment (outside any source
+  checkout) and running a full smoke test: version (`0.5.0`) and install
+  path (`site-packages`, not the repo) both correct; a `Retriever` →
+  `Generator` `Sequential` pipeline; `ExecutionEngine` with `DEBUG`
+  observability (`RunStatus.SUCCEEDED`, rendered trace); the evaluation
+  API (`Evaluator`/`ExactMatch`, `mean('exact_match') == 1.0`); and
+  `RAGConfig` — all executed successfully against the published
+  artifact, not a local build. GitHub release:
+  https://github.com/payamfirouzfar/RAG-MODULE/releases/tag/v0.5.0
+  (created separately from the `v0.5.0` tag after a real, diagnosed CI
+  permissions bug — see `evaluation/step28-evaluation.md`'s publication
+  section for the full incident record — prevented the workflow's own
+  automated release-creation step from succeeding on the first run;
+  the underlying `contents: write` permission gap was fixed in
+  `release.yml` for all future releases).
+
 ## [0.4.0] - Step 4: Runtime Context Propagation + Module Execution Semantics
 
 ### Added
