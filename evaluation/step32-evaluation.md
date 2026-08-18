@@ -2,16 +2,14 @@
 
 ## Status
 
-**Step 32: local implementation, testing, and integration COMPLETE.**
-BM25 and RRF shipped as `ragtorch.retrieval`; the real external
-consumer (`examples/rag_consumer/`) demonstrably performs dense +
-lexical hybrid retrieval using them, unmodified from the existing
-`Retriever`/`Chunk`/`RetrievalResult`/`VectorStore` contracts. Zero
-runtime dependencies added. `CompositionGraph`/`ExecutionEngine`/
-`Sequential`/async execution untouched. Git/CI closure (branch push, PR,
-merge, post-merge CI verification) is the remaining work before this
-step can be marked fully COMPLETE — recorded honestly below, not
-assumed.
+**Step 32: COMPLETE.** BM25 and RRF shipped as `ragtorch.retrieval`;
+the real external consumer (`examples/rag_consumer/`) demonstrably
+performs dense + lexical hybrid retrieval using them, unmodified from
+the existing `Retriever`/`Chunk`/`RetrievalResult`/`VectorStore`
+contracts. Zero runtime dependencies added. `CompositionGraph`/
+`ExecutionEngine`/`Sequential`/async execution untouched. Full git/CI
+closure verified — see the closure section at the end of this document
+for real merge SHA and post-merge CI evidence.
 
 ## 1. Repository audit / baseline
 
@@ -316,8 +314,47 @@ consumer's own architecture already targets.
 
 ## Git / CI closure
 
-(Filled in after real GitHub-facing work — branch push, PR, CI
-verification, merge, post-merge CI — following this project's standing
-rule that PR CI and post-merge CI must both be independently verified
-via the actual GitHub Actions API, never assumed from local test
-success alone.)
+- Branch: `feat/step32-bm25-rrf`, created from `main` at
+  `5e84c59891917ba9e0939394037b7e4071d7a128`.
+- PR: [#40](https://github.com/payamfirouzfar/RAG-MODULE/pull/40),
+  opened explicitly against `main` (confirmed via `gh pr view --json
+  baseRefName` → `"main"`, not another feature branch — the exact
+  mistake this project has previously hit).
+- PR CI run [32139435969](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32139435969)
+  at commit `919468b8ac3c0bd7095add6cb028c54aae66b536` — **all 7 jobs
+  succeeded on the first attempt**, verified via real log content, not
+  only the green summary:
+  - `test (3.10)`, `test (3.11)`, `test (3.12)`: **576 passed, 13
+    deselected** each, lint (`ruff check .`) clean on each.
+  - `packaging (3.10/3.11/3.12)`: wheel inspected at **34 entries**
+    (31 pre-existing + 3 new `retrieval` files), consumer smoke test
+    passed, full packaging suite **13 passed** on each.
+  - `rag-consumer-demo`: **86 passed, 1 skipped** — the exact expected
+    `pytest.importorskip` behavior, confirmed on real CI (not merely
+    reproduced locally).
+- PR diff scope verified via `gh pr view --json files` immediately
+  before merge: exactly the 16 files listed in this document's "What
+  was implemented"/test sections — `CHANGELOG.md`, `README.md`,
+  `docs/architecture/requirements-matrix-v0.1.md`,
+  `benchmarks/step32_bm25_rrf.py`, `evaluation/step32-evaluation.md`,
+  `examples/rag_consumer/src/hybrid_retriever.py`,
+  `examples/rag_consumer/tests/test_hybrid_retriever.py`,
+  `src/ragtorch/retrieval/{__init__,bm25,fusion}.py`,
+  `tests/unit/retrieval/{__init__,test_bm25,test_fusion,test_hybrid,test_provider_independence,test_public_api}.py`
+  — no unexpected files, no changes to `CompositionGraph`/
+  `ExecutionEngine`/`ExecutionContext`/`Trace`/`Run`/`Module.__call__`/
+  `pipeline.py`.
+- Merged via `gh pr merge 40 --merge`. Merge SHA verified directly via
+  `gh pr view --json mergeCommit`: **`a8aa48ff85f1883a90dbf558e0588612a790457a`**.
+- Post-merge CI run [32139818023](https://github.com/payamfirouzfar/RAG-MODULE/actions/runs/32139818023)
+  on `main`, head SHA confirmed as the exact merge commit `a8aa48f` —
+  **all 7 jobs succeeded**, real log content re-confirmed:
+  `test (3.10/3.11/3.12)`: **576 passed, 13 deselected** each;
+  `rag-consumer-demo`: **86 passed, 1 skipped**; all three `packaging`
+  jobs green.
+- Local `main` fast-forwarded to `a8aa48f` (`git checkout main && git
+  pull`), confirmed via `git log --oneline -3`. Working tree clean
+  (two pre-existing, unrelated scratch files remain untracked, as
+  before this step).
+
+**Final GitHub SHA: `a8aa48ff85f1883a90dbf558e0588612a790457a`.**
