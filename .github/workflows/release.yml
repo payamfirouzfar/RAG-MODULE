@@ -142,7 +142,11 @@ jobs:
   verify-publication:
     needs: publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # required by softprops/action-gh-release to create the GitHub release for this tag
     steps:
+      - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
