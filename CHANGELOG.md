@@ -9,6 +9,31 @@ while `MAJOR` is `0`, a `MINOR` bump may include breaking changes to the
 public API (`ragtorch.__all__`); `PATCH` bumps are backward-compatible
 fixes only.
 
+## [Unreleased]
+
+### Added
+
+- `ragtorch.retrieval`: two small, provider-independent retrieval
+  primitives, shipped together because RRF only becomes useful when
+  there are multiple rankings to fuse, and BM25 supplies a real second
+  ranking alongside the existing consumer's dense retrieval.
+  - `BM25Index`: a dependency-free, in-memory inverted-index BM25
+    implementation (standard formula, configurable `k1`/`b`, a
+    stdlib-only default tokenizer, deterministic tie-breaking). Not a
+    `Module` — a deterministic scoring algorithm needs no execution
+    identity, lifecycle, or provider concept.
+  - `rrf()`: Reciprocal Rank Fusion — deterministic, rank-based fusion
+    of any number of rankings of hashable ids, with documented
+    duplicate handling and tie-breaking.
+  - `examples/rag_consumer/src/hybrid_retriever.py`: a real
+    application-level `HybridRetriever(Module)` demonstrating dense +
+    lexical hybrid retrieval on the existing consumer's real
+    `Retriever`/`Chunk`/`RetrievalResult` types, unchanged.
+- Not published to PyPI as part of this change — this section records
+  unreleased work per this project's CHANGELOG convention; see
+  [docs/RELEASING.md](docs/RELEASING.md) for when/how a version bump
+  actually happens.
+
 ## [0.5.0] - Step 28: Public Python Package / PyPI Release Infrastructure
 
 ### Added
