@@ -152,3 +152,36 @@ jobs:
         with:
           name: ragtorch-dist-py${{ matrix.python-version }}
           path: dist/
+
+  rag-consumer-demo:
+    # Tests the examples/rag_consumer/ application (an external consumer
+    # of the published ragmodel package) -- NOT part of ragtorch itself,
+    # never affects ragtorch's own test/packaging jobs above. Uses only
+    # HashingEmbedder/InMemoryVectorStore (no sentence-transformers/
+    # faiss/GPU download) and mocks the OpenAI provider -- no API keys,
+    # no live websites, no paid services. This is a smoke/unit test job,
+    # not the real Colab notebook -- that remains a manual integration
+    # demonstration, deliberately not run in CI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ragmodel from PyPI plus demo dependencies (no GPU/model deps)
+        run: |
+          cd examples/rag_consumer
+          pip install ragmodel==0.5.0 requests beautifulsoup4 openai pytest
+
+      - name: Run rag_consumer demo test suite (mocked network/LLM, no API keys)
+        run: |
+          cd examples/rag_consumer
+          pytest -q
+
+      - name: Run rag_consumer demo benchmark (HashingEmbedder, no model download)
+        run: |
+          cd examples/rag_consumer
+          python benchmark.py

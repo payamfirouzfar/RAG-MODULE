@@ -17,3 +17,7 @@ htmlcov/
 .vscode/
 .idea/
 .claude/
+
+# Runtime-generated demo data (scraped datasets, vector indexes) --
+# never committed, always reproducible by running the demo/notebook.
+examples/rag_consumer/data/
