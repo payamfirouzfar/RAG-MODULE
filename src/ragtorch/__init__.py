@@ -136,7 +136,13 @@ from ragtorch.core import (
 )
 
 try:
-    __version__ = _metadata.version("ragtorch")
+    # The installed *distribution* name is "ragmodel" (pyproject.toml's
+    # `name` field / PyPI project name), even though the importable
+    # package remains "ragtorch" -- these are allowed to differ, and
+    # importlib.metadata.version() must be queried by the distribution
+    # name, not the import name, or it raises PackageNotFoundError even
+    # on a correctly installed package.
+    __version__ = _metadata.version("ragmodel")
 except _metadata.PackageNotFoundError:
     # Only reachable when ragtorch is imported from source without being
     # installed at all (neither editable nor a real install) -- every

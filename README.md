@@ -63,8 +63,12 @@ for the reasoning behind the core `Module` contract.
 
 ## Install
 
-`ragtorch` is pre-1.0 (`0.x`) — the public API may change between minor
-versions; see
+The `ragtorch` Python package is distributed on PyPI under the project
+name `ragmodel` — `pip install ragmodel`, then `import ragtorch` in code
+(the distribution name and the import name are different; PyPI allows
+this, and nothing in the codebase or its public API changes because of
+it). The package is pre-1.0 (`0.x`) — the public API may change between
+minor versions; see
 [ADR-024](docs/architecture/decisions/ADR-024-versioning-and-release-policy.md)
 for the exact versioning policy. Pin an exact version, not a range, if
 you need stability across upgrades.
@@ -72,10 +76,14 @@ you need stability across upgrades.
 ### From PyPI
 
 ```bash
-pip install ragtorch
+pip install ragmodel
 ```
 
-Only use this once `ragtorch` has actually been published — check
+```python
+import ragtorch  # the import name stays ragtorch, even though the PyPI package is ragmodel
+```
+
+Only use this once `ragmodel` has actually been published — check
 [CHANGELOG.md](CHANGELOG.md) or the PyPI project page for the current
 released version before relying on this command.
 

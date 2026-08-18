@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ragtorch"
+name = "ragmodel"
 version = "0.5.0"
 description = "A modular, provider-independent execution kernel for building composable RAG systems."
 readme = "README.md"

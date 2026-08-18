@@ -49,6 +49,14 @@ fixes only.
   "what ragtorch is today" / "what ragtorch is not yet" sections, so the
   package is never marketed as shipping RAG-provider functionality it
   does not have.
+- **PyPI distribution name changed to `ragmodel`** (`pyproject.toml`'s
+  `name` field). `pip install ragmodel`, then `import ragtorch` in code
+  — the Python import name is unchanged and remains `ragtorch`
+  everywhere (PyPI allows the distribution name and import name to
+  differ; this is a metadata-only change with zero source code impact).
+  Decided and requested by the repository owner before the PyPI
+  Trusted Publisher was registered, so the pending publisher on PyPI
+  was configured directly under the `ragmodel` project name.
 
 ### Compatibility
 
