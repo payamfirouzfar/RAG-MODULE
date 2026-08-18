@@ -157,6 +157,32 @@ rag = Sequential(Retriever(), Generator())
 print(rag("refund policy"))
 ```
 
+Hybrid dense + lexical retrieval, using `ragtorch.retrieval`'s two
+provider-independent primitives (`BM25Index` for lexical search, `rrf`
+for deterministic rank fusion — neither is a `Module`, both are plain
+deterministic algorithms):
+
+```python
+from ragtorch.retrieval import BM25Index, rrf
+
+lexical = BM25Index(
+    {
+        "doc-1": "Python is a programming language",
+        "doc-2": "Python is also a snake",
+    }
+)
+
+lexical_results = lexical.search("Python programming")
+lexical_ids = [item.item for item in lexical_results]
+
+dense_ids = ["doc-2", "doc-1"]  # from your own dense retriever
+
+fused = rrf([dense_ids, lexical_ids])
+print(fused)
+# both docs appear in both rankings and tie on fused score here;
+# the deterministic tie-break falls back to first-seen order
+```
+
 Evaluating any callable system (no LLM required):
 
 ```python
