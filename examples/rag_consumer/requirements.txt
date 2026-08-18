@@ -1,0 +1,18 @@
+# Application dependencies for the RAG consumer demo.
+# These belong ONLY to this demo, never to ragtorch's own runtime
+# dependencies (ragtorch/ragmodel remains a zero-runtime-dependency
+# execution kernel -- see ../../pyproject.toml).
+
+ragmodel==0.5.0
+
+requests>=2.31
+beautifulsoup4>=4.12
+
+sentence-transformers>=3.0
+faiss-cpu>=1.8
+
+# Optional, only required for MODE="llm" with LLM_PROVIDER="openai".
+openai>=1.30
+
+# Dev/test tooling for this demo only.
+pytest>=8.0
