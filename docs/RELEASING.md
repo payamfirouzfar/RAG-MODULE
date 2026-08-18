@@ -1,12 +1,17 @@
-# Releasing ragtorch
+# Releasing ragtorch (published on PyPI as `ragmodel`)
 
 This is the deterministic release procedure for publishing a new
 `ragtorch` version to PyPI (Step 28, ADR-024). Follow every step in
 order — do not skip the post-publication verification.
 
+Note the distribution/import name split: the PyPI project name is
+`ragmodel` (`pip install ragmodel`), but the Python import name remains
+`ragtorch` (`import ragtorch`) — this only affects `pyproject.toml`'s
+`name` field and install-command documentation; nothing else changes.
+
 ## Prerequisites (one-time setup, not part of a normal release)
 
-1. A PyPI project named `ragtorch` must exist, with **Trusted
+1. A PyPI project named `ragmodel` must exist, with **Trusted
    Publishing** configured to trust this repository
    (`payamfirouzfar/RAG-MODULE`), the `release.yml` workflow filename,
    and the `pypi` GitHub Environment. This is configured on
@@ -46,7 +51,7 @@ order — do not skip the post-publication verification.
    opening the PR):
    ```bash
    python -m venv /tmp/release-check
-   /tmp/release-check/bin/python -m pip install dist/ragtorch-*.whl
+   /tmp/release-check/bin/python -m pip install dist/ragmodel-*.whl
    cd /tmp && /tmp/release-check/bin/python -c "import ragtorch; print(ragtorch.__version__)"
    ```
 6. **Open a PR** with the version bump, CHANGELOG entry, and any other
@@ -78,7 +83,7 @@ order — do not skip the post-publication verification.
     publishes via PyPI Trusted Publishing — no stored API token.
 13. **The `verify-publication` job** waits briefly for PyPI's index to
     reflect the new release, then installs the just-published version
-    from PyPI itself (`pip install ragtorch`, not the local wheel) into
+    from PyPI itself (`pip install ragmodel`, not the local wheel) into
     a fresh environment and runs a smoke test — the only step that
     actually proves the public release works, as opposed to proving the
     pre-publication artifact worked.
@@ -86,7 +91,7 @@ order — do not skip the post-publication verification.
     only) with auto-generated release notes from the tag.
 15. **Record evidence** in `evaluation/step<N>-evaluation.md` or the
     relevant step's ledger: the PyPI version now live, the exact
-    `pip install ragtorch` clean-install verification output, the
+    `pip install ragmodel` clean-install verification output, the
     `release.yml` run ID, and the GitHub release URL.
 
 ## What must NEVER happen
@@ -101,7 +106,7 @@ order — do not skip the post-publication verification.
   if it cannot be configured, publication is blocked, not
   worked around with a stored token.
 - Publication must never be claimed as complete without the
-  `verify-publication` job's actual `pip install ragtorch` evidence —
+  `verify-publication` job's actual `pip install ragmodel` evidence —
   a successful `publish` job alone (PyPI accepted the upload) is not
   the same claim as "a real user can now install this," even though in
   practice they usually coincide.

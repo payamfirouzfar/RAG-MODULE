@@ -124,7 +124,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.confirm_publish == 'publish')
     environment:
       name: pypi
-      url: https://pypi.org/project/ragtorch/
+      url: https://pypi.org/project/ragmodel/
     permissions:
       id-token: write # required for PyPI Trusted Publishing (OIDC) -- no API token stored in secrets
     steps:
@@ -151,10 +151,10 @@ jobs:
       - name: Wait for PyPI index to reflect the new release
         run: sleep 30
 
-      - name: Install ragtorch from PyPI in a clean environment and smoke test
+      - name: Install ragmodel from PyPI in a clean environment and smoke test
         run: |
           python -m venv /tmp/pypi-verify-env
-          /tmp/pypi-verify-env/bin/python -m pip install --quiet ragtorch
+          /tmp/pypi-verify-env/bin/python -m pip install --quiet ragmodel
           cd /tmp
           /tmp/pypi-verify-env/bin/python -c "
           import ragtorch
