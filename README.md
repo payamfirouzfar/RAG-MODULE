@@ -1,118 +1,57 @@
 # ragtorch
 
-A modular, provider-independent execution kernel for building composable
-RAG (retrieval-augmented generation) systems.
+A provider-independent Python framework for building RAG systems as composable, inspectable, and testable pieces.
 
-## What ragtorch is today
+**Actively developed · pre-1.0**
 
-A framework kernel you compose your own RAG systems on top of:
+ragtorch is inspired by PyTorch's `Module` pattern, but it focuses on the execution, composition, observability, retrieval primitives, and evaluation layers rather than forcing a specific AI provider stack.
 
-- **`Module`/`Sequential`/`Block`/`CompositionGraph`** — the core
-  composable execution primitives. `Module` is the concrete
-  implementation base; `Component` is a minimal structural protocol
-  (`name`, `component_type`, `__call__`) that anything can satisfy
-  without inheriting from `Module` at all.
-- **`ExecutionEngine`** — coordinates `Run`/`Trace`/`MetricsCollector`
-  around a `Module` call as a guaranteed contract, at three
-  observability levels (`OFF`/`BASIC`/`DEBUG`).
-- **`ragtorch.evaluation`** — a model-agnostic evaluation framework
-  (`Evaluator`, `Metric`, `EvaluationCase`) that scores any callable
-  system, not only `ragtorch` components.
-- **Nested execution context propagation** — composite `Module`
-  execution (e.g. `Sequential`'s children) gets correctly-parented
-  execution identity for each child, with zero global state.
-- **Structural, immutable architecture metadata** — `InputPort`/
-  `OutputPort`/`is_compatible()`/`ArchitectureSnapshot` let you describe
-  and validate a component's boundary and a whole architecture's shape
-  without executing anything.
+## Why ragtorch?
 
-## What ragtorch is not yet
+RAG applications can quickly turn into tightly connected pieces of retrieval, ranking, generation, tracing, evaluation, and application logic.
 
-ragtorch does not currently ship any built-in:
+ragtorch takes a simpler approach: provide a stable execution layer and let you bring the components you actually need.
+
+> **Stable interfaces + replaceable implementations + observable execution + measurable behavior.**
+
+The goal is to make RAG architectures easier to compose, inspect, test, evaluate, and benchmark without tying the core to a particular LLM, vector database, or cloud provider.
+
+## What is available today?
+
+The current framework includes:
+
+- **`Module`** — the main implementation base for composable components.
+- **`Component`** — a minimal structural protocol that third-party classes can satisfy without inheriting from ragtorch.
+- **`Sequential`** — ordered module composition.
+- **`CompositionGraph`** — immutable graph-based composition.
+- **`Block`** — a reusable graph-backed module that can itself be composed inside another pipeline.
+- **`ExecutionPlan` + `Executor`** — deterministic planning and execution of composition graphs.
+- **`ExecutionEngine`** — a common `Run` / `Trace` / `MetricsCollector` lifecycle with `OFF`, `BASIC`, and `DEBUG` observability levels.
+- **`ragtorch.evaluation`** — model-agnostic evaluation for any callable system.
+- **Execution context propagation** — nested execution keeps the correct parent/child relationship without global state.
+- **Architecture metadata** — ports and immutable snapshots for describing component boundaries without executing them.
+- **`ragtorch.retrieval`** — dependency-free retrieval primitives including `BM25Index` and Reciprocal Rank Fusion (`rrf`).
+
+## What is intentionally not included?
+
+ragtorch is not an all-in-one RAG application framework.
+
+The core does not currently ship built-in:
 
 - embedding models
 - vector databases
 - LLM providers
 - document loaders
-- chunking framework
+- chunking systems
 - rerankers
 - multimodal or vision providers
-- Graph RAG implementation
+- Graph RAG implementations
 
-These are explicitly out of scope for the framework kernel itself (see
-[docs/architecture/decisions/ADR-005-provider-independence.md](docs/architecture/decisions/ADR-005-provider-independence.md)).
-You compose your own retrieval/generation components — plain classes
-satisfying `Component`, or `Module` subclasses — and wire them together
-with `Sequential`/`Block`/`CompositionGraph`. See the Quick example
-below for a working (if deliberately simple) end-to-end pipeline built
-entirely this way.
+You bring these pieces yourself and connect them through the framework's component contracts. This keeps the core small and provider-independent.
 
-Whether and how a provider-adapter layer gets added to ragtorch itself
-is an open, evidence-gated question — see
-[docs/architecture/requirements-matrix-v0.1.md](docs/architecture/requirements-matrix-v0.1.md)
-rows A76/A78/A79 for the audit trail. Nothing here should be read as
-implying that layer is coming in any particular form or timeframe.
+The provider-adapter question is intentionally evidence-driven rather than added just for the sake of integrations. See [ADR-005](docs/architecture/decisions/ADR-005-provider-independence.md) and the [requirements matrix](docs/architecture/requirements-matrix-v0.1.md) for the project's reasoning.
 
-## Design principle
-
-> Stable interfaces + replaceable implementations + observable execution +
-> measurable behavior.
-
-See [docs/architecture/decisions/ADR-001-core-module-abstraction.md](docs/architecture/decisions/ADR-001-core-module-abstraction.md)
-for the reasoning behind the core `Module` contract.
-
-## Install
-
-The `ragtorch` Python package is distributed on PyPI under the project
-name `ragmodel` — `pip install ragmodel`, then `import ragtorch` in code
-(the distribution name and the import name are different; PyPI allows
-this, and nothing in the codebase or its public API changes because of
-it). The package is pre-1.0 (`0.x`) — the public API may change between
-minor versions; see
-[ADR-024](docs/architecture/decisions/ADR-024-versioning-and-release-policy.md)
-for the exact versioning policy. Pin an exact version, not a range, if
-you need stability across upgrades.
-
-### From PyPI
-
-```bash
-pip install ragmodel
-```
-
-```python
-import ragtorch  # the import name stays ragtorch, even though the PyPI package is ragmodel
-```
-
-`ragmodel` is published on PyPI: https://pypi.org/project/ragmodel/.
-Check [CHANGELOG.md](CHANGELOG.md) or the PyPI project page for the
-current released version.
-
-### Development install
-
-```bash
-python -m venv .venv
-.venv/Scripts/activate   # Windows
-pip install -e ".[dev]"
-```
-
-This installs `ragtorch` in editable mode plus development tooling
-(`pytest`, `ruff`, `mypy`, `build`).
-
-### Building and installing a real wheel locally
-
-To build and install the actual distributable artifact (e.g. to test
-it the way a real consumer would, outside the source checkout):
-
-```bash
-python -m build --wheel
-pip install dist/ragtorch-*.whl
-```
-
-The wheel has zero runtime dependencies and is provider-independent --
-no LLM, embedding, vector-store, or network dependency is pulled in,
-and installation performs no network access or provider authentication.
-
-## Quick example
+## A simple example
 
 ```python
 from ragtorch import Module, Sequential
@@ -129,13 +68,12 @@ class Reverse(Module):
 
 
 pipeline = Sequential(UpperCase(), Reverse())
-print(pipeline("hello"))  # "OLLEH"
+
+print(pipeline("hello"))  # OLLEH
 print(pipeline.inspect())
 ```
 
-A minimal retrieval + generation pipeline, composed entirely from your
-own components (no built-in retriever/generator exists -- see "What
-ragtorch is not yet" above):
+The same pattern can be used for a RAG-shaped application while keeping the retriever and generator under your control:
 
 ```python
 from ragtorch import Module, Sequential
@@ -143,13 +81,13 @@ from ragtorch import Module, Sequential
 
 class Retriever(Module):
     def forward(self, query, *, context=None):
-        # Replace with a real embedding model + vector store/index.
+        # Replace with your own embedding model + vector store.
         return {"query": query, "docs": ["doc about " + query]}
 
 
 class Generator(Module):
     def forward(self, payload, *, context=None):
-        # Replace with a real LLM call.
+        # Replace with your own LLM call.
         return f"Answer for '{payload['query']}': {payload['docs']}"
 
 
@@ -157,33 +95,29 @@ rag = Sequential(Retriever(), Generator())
 print(rag("refund policy"))
 ```
 
-Hybrid dense + lexical retrieval, using `ragtorch.retrieval`'s two
-provider-independent primitives (`BM25Index` for lexical search, `rrf`
-for deterministic rank fusion — neither is a `Module`, both are plain
-deterministic algorithms):
+## Retrieval primitives
+
+`BM25Index` provides dependency-free lexical retrieval, while `rrf()` combines rankings deterministically:
 
 ```python
 from ragtorch.retrieval import BM25Index, rrf
 
-lexical = BM25Index(
-    {
-        "doc-1": "Python is a programming language",
-        "doc-2": "Python is also a snake",
-    }
-)
+lexical = BM25Index({
+    "doc-1": "Python is a programming language",
+    "doc-2": "Python is also a snake",
+})
 
-lexical_results = lexical.search("Python programming")
-lexical_ids = [item.item for item in lexical_results]
-
+lexical_ids = [item.item for item in lexical.search("Python programming")]
 dense_ids = ["doc-2", "doc-1"]  # from your own dense retriever
 
-fused = rrf([dense_ids, lexical_ids])
-print(fused)
-# both docs appear in both rankings and tie on fused score here;
-# the deterministic tie-break falls back to first-seen order
+print(rrf([dense_ids, lexical_ids]))
 ```
 
-Evaluating any callable system (no LLM required):
+These are intentionally plain algorithms rather than `Module` objects. They do not need execution identity or lifecycle management.
+
+## Evaluation
+
+The evaluation layer is model-agnostic, so it can score a callable system even when that system was not built with ragtorch:
 
 ```python
 from ragtorch.evaluation import EvaluationCase, Evaluator, ExactMatch
@@ -192,68 +126,103 @@ cases = [
     EvaluationCase(input="ab", expected="BA", name="case-1"),
     EvaluationCase(input="hi", expected="IH", name="case-2"),
 ]
+
 result = Evaluator([ExactMatch()]).evaluate(pipeline, cases)
 print(result.mean("exact_match"))  # 1.0
 ```
 
-Executing with a guaranteed observability contract:
+## Observable execution
 
 ```python
 from ragtorch import ExecutionEngine, ObservabilityLevel
 
 engine = ExecutionEngine(level=ObservabilityLevel.DEBUG)
 result = engine.execute(pipeline, "hello")
-print(result.output)  # "OLLEH"
-print(result.run.status)  # RunStatus.SUCCEEDED
-print(result.trace.render())  # indented span tree
+
+print(result.output)            # OLLEH
+print(result.run.status)        # RunStatus.SUCCEEDED
+print(result.trace.render())    # indented span tree
 print(result.metrics.summarize_all())
 ```
 
-A composite module's children can opt in to receiving execution context —
-`Sequential` gives each step a distinct, correctly-parented child context:
+When modules are nested, execution context can be passed to child components so the runtime keeps the parent/child relationship without relying on global state.
 
-```python
-class Retriever(Module):
-    def forward(self, query, *, context=None):
-        print(f"retriever run: {context.run_id if context else None}")
-        return {"query": query, "docs": ["a", "b"]}
+## Installation
 
-
-class Generator(Module):
-    def forward(self, payload, *, context=None):
-        print(f"generator run: {context.run_id if context else None}")
-        return f"answer for {payload['query']}"
-
-
-rag = Sequential(Retriever(), Generator())
-engine.execute(rag, "What is our refund policy?")
-# retriever run: run_...   (distinct child of the root run)
-# generator run: run_...   (a different distinct child of the root run)
-```
-
-## Development
+The Python import name is `ragtorch`. The published PyPI distribution is currently named `ragmodel`.
 
 ```bash
-pytest                      # run tests
-ruff check .                # lint
-ruff format .                # format
-mypy                         # type check
+pip install ragmodel
 ```
 
-## Repository layout
+```python
+import ragtorch
+```
+
+The project is pre-1.0 (`0.x`), so minor releases may contain public API changes. Pin an exact version when you need a stable dependency. See [ADR-024](docs/architecture/decisions/ADR-024-versioning-and-release-policy.md) and [CHANGELOG.md](CHANGELOG.md).
+
+### Development install
+
+```bash
+python -m venv .venv
+.venv/Scripts/activate   # Windows
+pip install -e ".[dev]"
+```
+
+### Build a wheel locally
+
+```bash
+python -m build --wheel
+pip install dist/ragtorch-*.whl
+```
+
+The core package has zero mandatory runtime dependencies. It does not pull in an LLM, embedding provider, vector store, or network client.
+
+## Project structure
 
 ```text
-src/ragtorch/core/         core kernel + execution/observability primitives
-src/ragtorch/evaluation/    model-agnostic evaluation framework
-tests/unit/                  unit tests
-tests/integration/            integration tests
-tests/packaging/               clean-install / distribution artifact tests
-tests/discovery/                 RAG-consumer discovery experiments (not public API)
-docs/architecture/decisions/    ADRs
-docs/architecture/requirements.md   frozen project-wide requirements
-docs/architecture/requirements-matrix-v0.1.md   append-only requirements/evidence ledger
-evaluation/                       per-step evaluation reports and benchmarks
+src/ragtorch/core/                  core execution + observability
+src/ragtorch/evaluation/            model-agnostic evaluation
+src/ragtorch/retrieval/             provider-independent retrieval
+tests/unit/                          unit tests
+tests/integration/                  integration tests
+tests/packaging/                    packaging and clean-install tests
+tests/discovery/                    architecture/consumer experiments
+benchmarks/                          performance measurements
+evaluation/                          per-step evaluation reports
+docs/architecture/decisions/        architecture decision records
+docs/architecture/requirements.md   frozen project requirements
+docs/architecture/requirements-matrix-v0.1.md
+                                    requirements/evidence ledger
+examples/                            consumer examples
 ```
+
+## Engineering approach
+
+ragtorch is being developed step by step rather than as a large framework built all at once.
+
+Each architectural step is treated as an engineering contract: define the behavior, implement it, test it, measure it when performance matters, document the decision, and verify it in CI.
+
+For example, Step 16 introduced `Block` without creating a second execution system or changing the existing execution layers. The implementation was backed by unit tests, integration tests, a benchmark, evaluation evidence, and post-merge CI. The merged Step 16 work reached **406/406 tests across Python 3.10, 3.11, and 3.12**.
+
+The repository also keeps architectural decisions and rejected alternatives visible. That is intentional: the reasoning behind a framework is part of the project, not just the final code.
+
+## Current direction
+
+The project is still under active development. The broader roadmap is focused on building a clean foundation for RAG and agentic systems without turning the core into a collection of unrelated integrations.
+
+Areas being explored include:
+
+- richer RAG primitives and composition
+- evaluation and benchmarking
+- process and workflow abstractions
+- agents and tools
+- memory
+- observability
+- security and human-in-the-loop capabilities
+- process mining and optimization
+
+Not every idea will become core functionality. Benchmarks, real consumer examples, and architectural evidence are used to decide what belongs in the framework.
 
 ## Contributing
 
