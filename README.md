@@ -1,20 +1,18 @@
 # ragtorch
 
-A provider-independent Python framework for building RAG systems as composable, inspectable, and testable pieces.
+A provider-independent Python framework for building RAG systems from composable, inspectable, and testable pieces.
 
 **Actively developed · pre-1.0**
 
-ragtorch is inspired by PyTorch's `Module` pattern, but it focuses on the execution, composition, observability, retrieval primitives, and evaluation layers rather than forcing a specific AI provider stack.
+I built ragtorch around an idea I value in PyTorch: small modules should be easy to combine and inspect. Here, that pattern is applied to execution, composition, observability, retrieval, and evaluation without forcing a particular LLM, vector database, or cloud provider.
 
 ## Why ragtorch?
 
-RAG applications can quickly turn into tightly connected pieces of retrieval, ranking, generation, tracing, evaluation, and application logic.
+RAG applications often start as a short pipeline and gradually become a tightly connected mix of retrieval, ranking, generation, tracing, evaluation, and application logic.
 
-ragtorch takes a simpler approach: provide a stable execution layer and let you bring the components you actually need.
+ragtorch provides a stable execution layer while leaving the provider-specific choices to you. You bring the components your application actually needs.
 
-> **Stable interfaces + replaceable implementations + observable execution + measurable behavior.**
-
-The goal is to make RAG architectures easier to compose, inspect, test, evaluate, and benchmark without tying the core to a particular LLM, vector database, or cloud provider.
+The goal is practical: make RAG architectures easier to compose, inspect, test, evaluate, and benchmark while keeping the core independent of any particular provider.
 
 ## What is available today?
 
